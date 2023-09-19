@@ -61,13 +61,18 @@ const (
 	PrivateNetworksDirName = "private_networks"
 )
 
-// Create a new wallet for the provided keychain against the specified node URI.
 func NewWallet(keychain *secp256k1fx.Keychain, nodeURI tmpnet.NodeURI) primary.Wallet {
+	return NewWalletWithTxIDs(keychain, nodeURI, nil)
+}
+
+// Create a new wallet for the provided keychain against the specified node URI.
+func NewWalletWithTxIDs(keychain *secp256k1fx.Keychain, nodeURI tmpnet.NodeURI, txIDs []ids.ID) primary.Wallet {
 	tests.Outf("{{blue}} initializing a new wallet for node %s with URI: %s {{/}}\n", nodeURI.NodeID, nodeURI.URI)
 	baseWallet, err := primary.MakeWallet(DefaultContext(), &primary.WalletConfig{
-		URI:          nodeURI.URI,
-		AVAXKeychain: keychain,
-		EthKeychain:  keychain,
+		URI:              nodeURI.URI,
+		AVAXKeychain:     keychain,
+		EthKeychain:      keychain,
+		PChainTxsToFetch: set.Of(txIDs...),
 	})
 	require.NoError(ginkgo.GinkgoT(), err)
 	return primary.NewWalletWithOptions(
@@ -139,14 +144,7 @@ func AddEphemeralNode(network tmpnet.Network, flags tmpnet.FlagsMap) tmpnet.Node
 	node, err := network.AddEphemeralNode(ginkgo.GinkgoWriter, flags)
 	require.NoError(err)
 
-	// Ensure node is stopped on teardown. It's configuration is not removed to enable
-	// collection in CI to aid in troubleshooting failures.
-	ginkgo.DeferCleanup(func() {
-		tests.Outf("shutting down ephemeral node %q\n", node.GetID())
-		ctx, cancel := context.WithTimeout(context.Background(), DefaultTimeout)
-		defer cancel()
-		require.NoError(node.Stop(ctx))
-	})
+	RegisterNodeforCleanup(node)
 
 	return node
 }
@@ -253,4 +251,13 @@ func StartLocalNetwork(avalancheGoExecPath string, networkDir string) *local.Loc
 	tests.Outf("{{green}}Successfully started network{{/}}\n")
 
 	return network
+}
+
+func RegisterNodeforCleanup(node testnet.Node) {
+	ginkgo.DeferCleanup(func() {
+		tests.Outf("shutting down ephemeral node %q\n", node.GetID())
+		ctx, cancel := context.WithTimeout(context.Background(), DefaultTimeout)
+		defer cancel()
+		require.NoError(ginkgo.GinkgoT(), node.Stop(ctx))
+	})
 }

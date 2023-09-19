@@ -34,6 +34,10 @@ const (
 	networkHealthCheckInterval = 200 * time.Millisecond
 
 	defaultEphemeralDirName = "ephemeral"
+
+	defaultSubnetDirName = "subnets"
+
+	defaultChainConfigFilename = "config.json"
 )
 
 var (
@@ -102,17 +106,16 @@ func (ln *LocalNetwork) GetConfig() tmpnet.NetworkConfig {
 
 // Returns the nodes of the network in backend-agnostic form.
 func (ln *LocalNetwork) GetNodes() []tmpnet.Node {
-	nodes := make([]tmpnet.Node, 0, len(ln.Nodes))
-	for _, node := range ln.Nodes {
-		nodes = append(nodes, node)
-	}
-	return nodes
+	return localNodeSliceToNodeSlice(ln.Nodes)
 }
 
 // Adds a backend-agnostic ephemeral node to the network
 func (ln *LocalNetwork) AddEphemeralNode(w io.Writer, flags tmpnet.FlagsMap) (tmpnet.Node, error) {
 	if flags == nil {
 		flags = tmpnet.FlagsMap{}
+	} else {
+		// Avoid modifying the input flags map
+		flags = flags.Copy()
 	}
 	return ln.AddLocalNode(w, &LocalNode{
 		NodeConfig: tmpnet.NodeConfig{
@@ -134,6 +137,8 @@ func StartNetwork(
 	if _, err := fmt.Fprintf(w, "Preparing configuration for new local network with %s\n", network.ExecPath); err != nil {
 		return nil, err
 	}
+
+	// TODO(marun) Output the version information for avalanchego path
 
 	if len(rootDir) == 0 {
 		// Use the default root dir
@@ -205,7 +210,19 @@ func StartNetwork(
 
 // Read a network from the provided directory.
 func ReadNetwork(dir string) (*LocalNetwork, error) {
-	network := &LocalNetwork{Dir: dir}
+	// Ensure a real and absolute network dir so that node
+	// configuration that embeds the network path will continue to
+	// work regardless of symlink and working directory changes.
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+	realDir, err := filepath.EvalSymlinks(absDir)
+	if err != nil {
+		return nil, err
+	}
+
+	network := &LocalNetwork{Dir: realDir}
 	if err := network.ReadAll(); err != nil {
 		return nil, fmt.Errorf("failed to read local network: %w", err)
 	}
@@ -271,8 +288,11 @@ func (ln *LocalNetwork) PopulateLocalNetworkConfig(networkID uint32, nodeCount i
 		return err
 	}
 
-	if ln.CChainConfig == nil {
-		ln.CChainConfig = LocalCChainConfig()
+	if _, ok := ln.ChainConfigs["C"]; !ok {
+		if ln.ChainConfigs == nil {
+			ln.ChainConfigs = map[string]tmpnet.FlagsMap{}
+		}
+		ln.ChainConfigs["C"] = LocalCChainConfig()
 	}
 
 	// Default flags need to be set in advance of node config
@@ -412,19 +432,12 @@ func (ln *LocalNetwork) WaitForHealthy(ctx context.Context, w io.Writer) error {
 // Retrieve API URIs for all running primary validator nodes. URIs for
 // ephemeral nodes are not returned.
 func (ln *LocalNetwork) GetURIs() []tmpnet.NodeURI {
-	uris := make([]tmpnet.NodeURI, 0, len(ln.Nodes))
-	for _, node := range ln.Nodes {
-		// Only append URIs that are not empty. A node may have an
-		// empty URI if it was not running at the time
-		// node.ReadProcessContext() was called.
-		if len(node.URI) > 0 {
-			uris = append(uris, tmpnet.NodeURI{
-				NodeID: node.NodeID,
-				URI:    node.URI,
-			})
-		}
+	// Cast from []*LocalNode to []tmpnet.Node
+	nodes := make([]tmpnet.Node, len(ln.Nodes))
+	for i, node := range ln.Nodes {
+		nodes[i] = node
 	}
-	return uris
+	return tmpnet.GetNodeURIs(nodes)
 }
 
 // Stop all nodes in the network.
@@ -436,6 +449,17 @@ func (ln *LocalNetwork) Stop() error {
 		defer cancel()
 		if err := node.Stop(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("failed to stop node %s: %w", node.NodeID, err))
+		}
+	}
+	ephemeralNodes, err := ln.GetEphemeralNodes(nil)
+	if err != nil {
+		return err
+	}
+	for _, node := range ephemeralNodes {
+		ctx, cancel := context.WithTimeout(context.Background(), DefaultNodeStopTimeout)
+		defer cancel()
+		if err := node.Stop(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("failed to stop node %s: %w", node.GetID(), err))
 		}
 	}
 	if len(errs) > 0 {
@@ -476,26 +500,59 @@ func (ln *LocalNetwork) GetChainConfigDir() string {
 	return filepath.Join(ln.Dir, "chains")
 }
 
-func (ln *LocalNetwork) GetCChainConfigPath() string {
-	return filepath.Join(ln.GetChainConfigDir(), "C", "config.json")
-}
-
-func (ln *LocalNetwork) ReadCChainConfig() error {
-	chainConfig, err := tmpnet.ReadFlagsMap(ln.GetCChainConfigPath(), "C-Chain config")
+func (ln *LocalNetwork) ReadChainConfigs() error {
+	baseChainConfigDir := ln.GetChainConfigDir()
+	entries, err := os.ReadDir(baseChainConfigDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read chain config dir: %w", err)
 	}
-	ln.CChainConfig = *chainConfig
+
+	// Clear the map of data that may end up stale (e.g. if a given
+	// chain is in the map but no longer exists on disk)
+	ln.ChainConfigs = map[string]tmpnet.FlagsMap{}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			// Chain config files are expected to be nested under a
+			// directory with the name of the chain alias.
+			continue
+		}
+		chainAlias := entry.Name()
+		configPath := filepath.Join(baseChainConfigDir, chainAlias, defaultChainConfigFilename)
+		if _, err := os.Stat(configPath); os.IsNotExist(err) {
+			// No config file present
+			continue
+		}
+		chainConfig, err := tmpnet.ReadFlagsMap(configPath, fmt.Sprintf("%s chain config", chainAlias))
+		if err != nil {
+			return err
+		}
+		ln.ChainConfigs[chainAlias] = *chainConfig
+	}
+
 	return nil
 }
 
-func (ln *LocalNetwork) WriteCChainConfig() error {
-	path := ln.GetCChainConfigPath()
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, perms.ReadWriteExecute); err != nil {
-		return fmt.Errorf("failed to create C-Chain config dir: %w", err)
+func (ln *LocalNetwork) WriteChainConfigs() error {
+	baseChainConfigDir := ln.GetChainConfigDir()
+
+	for chainAlias, chainConfig := range ln.ChainConfigs {
+		// Create the directory
+		chainConfigDir := filepath.Join(baseChainConfigDir, chainAlias)
+		if err := os.MkdirAll(chainConfigDir, perms.ReadWriteExecute); err != nil {
+			return fmt.Errorf("failed to create %s chain config dir: %w", chainAlias, err)
+		}
+
+		// Write the file
+		path := filepath.Join(chainConfigDir, defaultChainConfigFilename)
+		if err := chainConfig.Write(path, fmt.Sprintf("%s chain config", chainAlias)); err != nil {
+			return err
+		}
 	}
-	return ln.CChainConfig.Write(path, "C-Chain config")
+
+	// TODO(marun) Ensure the removal of chain aliases that aren't present in the map
+
+	return nil
 }
 
 // Used to marshal/unmarshal persistent local network defaults.
@@ -573,7 +630,7 @@ func (ln *LocalNetwork) WriteAll() error {
 	if err := ln.WriteGenesis(); err != nil {
 		return err
 	}
-	if err := ln.WriteCChainConfig(); err != nil {
+	if err := ln.WriteChainConfigs(); err != nil {
 		return err
 	}
 	if err := ln.WriteDefaults(); err != nil {
@@ -590,7 +647,7 @@ func (ln *LocalNetwork) ReadConfig() error {
 	if err := ln.ReadGenesis(); err != nil {
 		return err
 	}
-	if err := ln.ReadCChainConfig(); err != nil {
+	if err := ln.ReadChainConfigs(); err != nil {
 		return err
 	}
 	return ln.ReadDefaults()
@@ -598,32 +655,11 @@ func (ln *LocalNetwork) ReadConfig() error {
 
 // Read node configuration and process context from disk.
 func (ln *LocalNetwork) ReadNodes() error {
-	nodes := []*LocalNode{}
-
-	// Node configuration / process context is stored in child directories
-	entries, err := os.ReadDir(ln.Dir)
+	nodes, err := ReadNodes(ln.Dir, nil /* skipFunc */)
 	if err != nil {
-		return fmt.Errorf("failed to read network path: %w", err)
+		return err
 	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		nodeDir := filepath.Join(ln.Dir, entry.Name())
-		node, err := ReadNode(nodeDir)
-		if errors.Is(err, os.ErrNotExist) {
-			// If no config file exists, assume this is not the path of a local node
-			continue
-		} else if err != nil {
-			return err
-		}
-
-		nodes = append(nodes, node)
-	}
-
 	ln.Nodes = nodes
-
 	return nil
 }
 
@@ -715,6 +751,190 @@ func (ln *LocalNetwork) GetBootstrapIPsAndIDs() ([]string, []string, error) {
 		return nil, nil, errMissingBootstrapNodes
 	}
 
+	return bootstrapIPs, bootstrapIDs, nil
+}
+
+func (ln *LocalNetwork) GetEphemeralNodes(nodeIDs []ids.NodeID) ([]tmpnet.Node, error) {
+	ephemeralDir := filepath.Join(ln.Dir, defaultEphemeralDirName)
+
+	if _, err := os.Stat(ephemeralDir); os.IsNotExist(err) {
+		return []tmpnet.Node{}, nil
+	} else if err != nil {
+		return nil, err
+	}
+
+	targetNodeIDs := set.NewSet[string](len(nodeIDs))
+	for _, nodeID := range nodeIDs {
+		targetNodeIDs.Add(nodeID.String())
+	}
+
+	// Read ephemeral nodes targeted for retrieval
+	nodes, err := ReadNodes(ephemeralDir, func(nodeID string) bool {
+		// Skip nodes not targeted for inclusion if a list of node IDs was provided
+		return len(targetNodeIDs) > 0 && !targetNodeIDs.Contains(nodeID)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return localNodeSliceToNodeSlice(nodes), nil
+}
+
+func (ln *LocalNetwork) GetSubnets() ([]*tmpnet.Subnet, error) {
+	subnetDir := filepath.Join(ln.Dir, defaultSubnetDirName)
+
+	if _, err := os.Stat(subnetDir); os.IsNotExist(err) {
+		return []*tmpnet.Subnet{}, nil
+	} else if err != nil {
+		return nil, err
+	}
+
+	// Node configuration / process context is stored in child directories
+	entries, err := os.ReadDir(subnetDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read subnet dir: %w", err)
+	}
+
+	subnets := []*tmpnet.Subnet{}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			// Looking only for files
+			continue
+		}
+		if filepath.Ext(entry.Name()) != ".json" {
+			// Subnet files should have a .json extension
+			continue
+		}
+
+		subnetPath := filepath.Join(subnetDir, entry.Name())
+		bytes, err := os.ReadFile(subnetPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read subnet file %s: %w", subnetPath, err)
+		}
+		subnet := &tmpnet.Subnet{}
+		if err := json.Unmarshal(bytes, subnet); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal subnet from %s: %w", subnetPath, err)
+		}
+
+		subnets = append(subnets, subnet)
+	}
+
+	return subnets, nil
+}
+
+func localNodeSliceToNodeSlice(localNodes []*LocalNode) []tmpnet.Node {
+	nodes := make([]tmpnet.Node, 0, len(localNodes))
+	for _, localNode := range localNodes {
+		nodes = append(nodes, localNode)
+	}
+	return nodes
+}
+
+// Read node configuration and process context from disk.
+func ReadNodes(dir string, skipFunc func(nodeID string) bool) ([]*LocalNode, error) {
+	nodes := []*LocalNode{}
+
+	// Node configuration / process context is stored in child directories
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read dir: %w", err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if skipFunc != nil && skipFunc(entry.Name()) {
+			continue
+		}
+
+		nodeDir := filepath.Join(dir, entry.Name())
+		node, err := ReadNode(nodeDir)
+		if errors.Is(err, os.ErrNotExist) {
+			// If no config file exists, assume this is not the path of a local node
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+
+		nodes = append(nodes, node)
+	}
+
+	return nodes, nil
+}
+
+func (ln *LocalNetwork) WriteSubnets(subnets []*tmpnet.Subnet) error {
+	subnetDir := filepath.Join(ln.Dir, defaultSubnetDirName)
+	if err := os.MkdirAll(subnetDir, perms.ReadWriteExecute); err != nil {
+		return fmt.Errorf("failed to create subnet dir: %w", err)
+	}
+
+	for _, subnet := range subnets {
+		bytes, err := tmpnet.DefaultJSONMarshal(subnet)
+		if err != nil {
+			return fmt.Errorf("failed to marshal subnet: %w", err)
+		}
+
+		subnetPath := filepath.Join(subnetDir, fmt.Sprintf("%s.json", subnet.Spec.Name))
+		if err := os.WriteFile(subnetPath, bytes, perms.ReadWrite); err != nil {
+			return fmt.Errorf("failed to write subnet: %w", err)
+		}
+	}
+	return nil
+}
+
+func (ln *LocalNetwork) RestartSubnets(ctx context.Context, w io.Writer, subnets []*tmpnet.Subnet) error {
+	for _, subnet := range subnets {
+		nodes, err := subnet.GetNodes(ln)
+		if err != nil {
+			return fmt.Errorf("failed to retrieve nodes for subnet %s: %w", subnet.Spec.Name, err)
+		}
+		if _, err := fmt.Fprintf(w, " restarting nodes for subnet %s\n", subnet.Spec.Name); err != nil {
+			return err
+		}
+		for _, node := range nodes {
+			bootstrapIPs, bootstrapIDs, err := ln.BootstrapIPsandIDsForNode(node.GetID(), subnets)
+			if err != nil {
+				return err
+			}
+			err = node.Restart(ctx, w, ln.ExecPath, bootstrapIPs, bootstrapIDs)
+			if err != nil {
+				if _, err := fmt.Fprintf(w, " failed to restart node %s: %v\n", node.GetID(), err); err != nil {
+					panic(err)
+				}
+			}
+			if _, err := fmt.Fprintf(w, " waiting for node %s to report healthy\n", node.GetID()); err != nil {
+				return err
+			}
+			err = tmpnet.WaitForHealthy(ctx, node)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// TODO(marun) Need to learn more about the semantics of network restart. Initially starting a network
+// doesn't require that all nodes be reachable, but for an existing network that clearly is not the case.
+func (ln *LocalNetwork) BootstrapIPsandIDsForNode(nodeID ids.NodeID, subnets []*tmpnet.Subnet) ([]string, []string, error) {
+	bootstrapIPs, bootstrapIDs, err := ln.GetBootstrapIPsAndIDs()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// TODO(marun) Unify this with retrieval for all nodes not just subnet nodes
+	for _, subnet := range subnets {
+		nodes, err := subnet.GetNodes(ln)
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, node := range nodes {
+			if node.GetID() == nodeID {
+				continue
+			}
+			bootstrapIPs = append(bootstrapIPs, node.GetProcessContext().StakingAddress)
+			bootstrapIDs = append(bootstrapIDs, node.GetID().String())
+		}
+	}
 	return bootstrapIPs, bootstrapIDs, nil
 }
 

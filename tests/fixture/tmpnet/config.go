@@ -100,6 +100,15 @@ func (f FlagsMap) Write(path string, description string) error {
 	return nil
 }
 
+// Return a deep copy of the flags map.
+func (f FlagsMap) Copy() FlagsMap {
+	newMap := make(FlagsMap, len(f))
+	for k, v := range f {
+		newMap[k] = v
+	}
+	return newMap
+}
+
 // Utility function simplifying construction of a FlagsMap from a file.
 func ReadFlagsMap(path string, description string) (*FlagsMap, error) {
 	bytes, err := os.ReadFile(path)
@@ -122,7 +131,7 @@ func DefaultJSONMarshal(v interface{}) ([]byte, error) {
 // common to all nodes in a given network.
 type NetworkConfig struct {
 	Genesis      *genesis.UnparsedConfig
-	CChainConfig FlagsMap
+	ChainConfigs map[string]FlagsMap
 	DefaultFlags FlagsMap
 	FundedKeys   []*secp256k1.PrivateKey
 }
@@ -160,6 +169,22 @@ func (c *NetworkConfig) EnsureGenesis(networkID uint32, initialStakers []genesis
 type NodeURI struct {
 	NodeID ids.NodeID
 	URI    string
+}
+
+func GetNodeURIs(nodes []Node) []NodeURI {
+	uris := make([]NodeURI, 0, len(nodes))
+	for _, node := range nodes {
+		// Only append URIs that are not empty. A node may have an
+		// empty URI if it is not currently running.
+		uri := node.GetProcessContext().URI
+		if len(uri) > 0 {
+			uris = append(uris, NodeURI{
+				NodeID: node.GetID(),
+				URI:    uri,
+			})
+		}
+	}
+	return uris
 }
 
 // NodeConfig defines configuration for an AvalancheGo node.

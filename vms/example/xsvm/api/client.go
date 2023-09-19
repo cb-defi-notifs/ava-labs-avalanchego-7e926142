@@ -5,7 +5,10 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
@@ -14,6 +17,10 @@ import (
 	"github.com/ava-labs/avalanchego/vms/example/xsvm/genesis"
 	"github.com/ava-labs/avalanchego/vms/example/xsvm/tx"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
+)
+
+var (
+	errNotAccepted = errors.New("failed to see the tx accepted before timeout")
 )
 
 // Client defines the xsvm API client.
@@ -61,6 +68,12 @@ type Client interface {
 		txID ids.ID,
 		options ...rpc.Option,
 	) (*warp.UnsignedMessage, []byte, error)
+	WaitForAcceptance(
+		ctx context.Context,
+		txID ids.ID,
+		pollingInterval time.Duration,
+		options ...rpc.Option,
+	) error
 }
 
 func NewClient(uri, chain string) Client {
@@ -240,4 +253,32 @@ func (c *client) Message(
 		return nil, nil, err
 	}
 	return resp.Message, resp.Signature, resp.Message.Initialize()
+}
+
+func (c *client) WaitForAcceptance(
+	ctx context.Context,
+	txID ids.ID,
+	pollingInterval time.Duration,
+	options ...rpc.Option,
+) error {
+	ticker := time.NewTicker(pollingInterval)
+	defer ticker.Stop()
+	for {
+		_, _, err := c.Message(ctx, txID, options...)
+		if err == nil {
+			// Transaction was accepted
+			return nil
+		}
+		// If the transaction has not yet been accepted, the API call to
+		// xsvm.message will return 'not found'.
+		if !strings.Contains(fmt.Sprintf("%s", err), "not found") {
+			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			return errNotAccepted
+		case <-ticker.C:
+		}
+	}
 }

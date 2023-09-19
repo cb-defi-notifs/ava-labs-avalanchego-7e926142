@@ -16,6 +16,10 @@ type Network interface {
 	GetConfig() NetworkConfig
 	GetNodes() []Node
 	AddEphemeralNode(w io.Writer, flags FlagsMap) (Node, error)
+	GetEphemeralNodes(nodeIDs []ids.NodeID) ([]Node, error)
+	GetSubnets() ([]*Subnet, error)
+	WriteSubnets([]*Subnet) error
+	RestartSubnets(ctx context.Context, w io.Writer, subnets []*Subnet) error
 }
 
 // Defines node capabilities supportable regardless of how a network is orchestrated.
@@ -25,4 +29,5 @@ type Node interface {
 	GetProcessContext() node.NodeProcessContext
 	IsHealthy(ctx context.Context) (bool, error)
 	Stop(ctx context.Context) error
+	Restart(ctx context.Context, w io.Writer, defaultExecPath string, bootstrapIPs []string, bootstrapIDs []string) error
 }

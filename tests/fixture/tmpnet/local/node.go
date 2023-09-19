@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -337,4 +338,32 @@ func (n *LocalNode) WaitForProcessContext(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (n *LocalNode) Restart(
+	ctx context.Context,
+	w io.Writer,
+	defaultExecPath string,
+	bootstrapIPs []string,
+	bootstrapIDs []string,
+) error {
+	if _, err := fmt.Fprintf(w, "  restarting node %s\n", n.NodeID); err != nil {
+		return err
+	}
+	err := n.Stop(ctx)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "  stopped node %s\n", n.NodeID); err != nil {
+		return err
+	}
+	// Ensure the node is starting against the available set of bootstrap IDs
+	// TODO(marun) Use a map and filter out the node that is being started
+	n.Flags[config.BootstrapIDsKey] = strings.Join(bootstrapIDs, ",")
+	n.Flags[config.BootstrapIPsKey] = strings.Join(bootstrapIPs, ",")
+	err = n.WriteConfig()
+	if err != nil {
+		return err
+	}
+	return n.Start(w, defaultExecPath)
 }

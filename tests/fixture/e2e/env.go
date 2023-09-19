@@ -43,6 +43,10 @@ type TestEnvironment struct {
 	URIs []tmpnet.NodeURI
 	// The URI used to access the http server that allocates test data
 	TestDataServerURI string
+	// The directory containing VM plugins
+	PluginDir string
+	// Whether to retain subnets created by a test
+	RetainSubnets bool
 
 	require *require.Assertions
 }
@@ -75,6 +79,7 @@ func NewTestEnvironment(flagVars *FlagVars) *TestEnvironment {
 	tests.Outf("{{green}}network URIs: {{/}} %+v\n", uris)
 
 	testDataServerURI, err := fixture.ServeTestData(fixture.TestData{
+		// TODO(marun) Avoid allocating keys that were used to deploy subnets
 		FundedKeys: network.FundedKeys,
 	})
 	tests.Outf("{{green}}test data server URI: {{/}} %+v\n", testDataServerURI)
@@ -84,6 +89,8 @@ func NewTestEnvironment(flagVars *FlagVars) *TestEnvironment {
 		NetworkDir:        network.Dir,
 		URIs:              uris,
 		TestDataServerURI: testDataServerURI,
+		RetainSubnets:     flagVars.RetainSubnets(),
+		PluginDir:         flagVars.PluginDir(),
 	}
 }
 
