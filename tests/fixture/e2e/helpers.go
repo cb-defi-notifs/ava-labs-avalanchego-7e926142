@@ -34,7 +34,8 @@ const (
 	// A long default timeout used to timeout failed operations but
 	// unlikely to induce flaking due to unexpected resource
 	// contention.
-	DefaultTimeout = 2 * time.Minute
+	// TODO(marun) Make this configurable and have different values for local vs CI
+	DefaultTimeout = 15 * time.Second
 
 	// Interval appropriate for network operations that should be
 	// retried periodically but not too often.
