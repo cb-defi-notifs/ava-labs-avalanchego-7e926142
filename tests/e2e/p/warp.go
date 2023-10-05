@@ -55,7 +55,7 @@ var _ = e2e.DescribePChain("[Warp]", func() {
 			tests.Outf(" subnets exist and will be reused\n")
 			if len(os.Getenv("E2E_RESTART_SUBNETS")) > 0 {
 				ginkgo.By("restarting subnets")
-				require.NoError(network.RestartSubnets(e2e.DefaultContext(), ginkgo.GinkgoWriter, subnets))
+				require.NoError(network.RestartSubnets(e2e.DefaultContext(), ginkgo.GinkgoWriter, subnets...))
 			}
 		} else {
 			tests.Outf(" subnets do not yet exist and will be created\n")

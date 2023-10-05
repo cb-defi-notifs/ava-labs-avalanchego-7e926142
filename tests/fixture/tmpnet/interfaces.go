@@ -19,7 +19,7 @@ type Network interface {
 	GetEphemeralNodes(nodeIDs []ids.NodeID) ([]Node, error)
 	GetSubnets() ([]*Subnet, error)
 	WriteSubnets([]*Subnet) error
-	RestartSubnets(ctx context.Context, w io.Writer, subnets []*Subnet) error
+	RestartSubnets(ctx context.Context, w io.Writer, subnets ...*Subnet) error
 }
 
 // Defines node capabilities supportable regardless of how a network is orchestrated.
