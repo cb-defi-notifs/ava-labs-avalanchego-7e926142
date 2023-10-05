@@ -62,11 +62,11 @@ const (
 )
 
 func NewWallet(keychain *secp256k1fx.Keychain, nodeURI tmpnet.NodeURI) primary.Wallet {
-	return NewWalletWithTxIDs(keychain, nodeURI, nil)
+	return NewWalletWithTxIDs(keychain, nodeURI)
 }
 
 // Create a new wallet for the provided keychain against the specified node URI.
-func NewWalletWithTxIDs(keychain *secp256k1fx.Keychain, nodeURI tmpnet.NodeURI, txIDs []ids.ID) primary.Wallet {
+func NewWalletWithTxIDs(keychain *secp256k1fx.Keychain, nodeURI testnet.NodeURI, txIDs ...ids.ID) primary.Wallet {
 	tests.Outf("{{blue}} initializing a new wallet for node %s with URI: %s {{/}}\n", nodeURI.NodeID, nodeURI.URI)
 	baseWallet, err := primary.MakeWallet(DefaultContext(), &primary.WalletConfig{
 		URI:              nodeURI.URI,
