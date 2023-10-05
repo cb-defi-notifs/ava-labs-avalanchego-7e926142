@@ -252,7 +252,7 @@ func (n *LocalNode) GetProcess() (*os.Process, error) {
 
 // Signals the node process to stop and waits for the node process to
 // stop running.
-func (n *LocalNode) Stop(ctx context.Context) error {
+func (n *LocalNode) Stop(ctx context.Context, waitForProcessStopped bool) error {
 	proc, err := n.GetProcess()
 	if err != nil {
 		return fmt.Errorf("failed to retrieve process to stop: %w", err)
@@ -264,7 +264,13 @@ func (n *LocalNode) Stop(ctx context.Context) error {
 	if err := proc.Signal(syscall.SIGTERM); err != nil {
 		return fmt.Errorf("failed to send SIGTERM to pid %d: %w", n.PID, err)
 	}
+	if waitForProcessStopped {
+		return n.WaitForProcessStopped(ctx)
+	}
+	return nil
+}
 
+func (n *LocalNode) WaitForProcessStopped(ctx context.Context) error {
 	// Wait for the node process to stop
 	ticker := time.NewTicker(tmpnet.DefaultNodeTickerInterval)
 	defer ticker.Stop()
@@ -350,7 +356,7 @@ func (n *LocalNode) Restart(
 	if _, err := fmt.Fprintf(w, "  restarting node %s\n", n.NodeID); err != nil {
 		return err
 	}
-	err := n.Stop(ctx)
+	err := n.Stop(ctx, true /* waitForProcessStopped */)
 	if err != nil {
 		return err
 	}

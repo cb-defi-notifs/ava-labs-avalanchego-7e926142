@@ -442,26 +442,37 @@ func (ln *LocalNetwork) GetURIs() []tmpnet.NodeURI {
 
 // Stop all nodes in the network.
 func (ln *LocalNetwork) Stop() error {
-	var errs []error
 	// Assume the nodes are loaded and the pids are current
+	allNodes := []testnet.Node{}
 	for _, node := range ln.Nodes {
-		ctx, cancel := context.WithTimeout(context.Background(), DefaultNodeStopTimeout)
-		defer cancel()
-		if err := node.Stop(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("failed to stop node %s: %w", node.NodeID, err))
-		}
+		allNodes = append(allNodes, node)
 	}
+
 	ephemeralNodes, err := ln.GetEphemeralNodes(nil)
 	if err != nil {
 		return err
 	}
-	for _, node := range ephemeralNodes {
+	allNodes = append(allNodes, ephemeralNodes...)
+
+	var errs []error
+
+	// Initial process stop for all nodes before waiting for processes to actually stop
+	for _, node := range allNodes {
 		ctx, cancel := context.WithTimeout(context.Background(), DefaultNodeStopTimeout)
 		defer cancel()
-		if err := node.Stop(ctx); err != nil {
+		if err := node.Stop(ctx, false /* waitForProcessStopped */); err != nil {
 			errs = append(errs, fmt.Errorf("failed to stop node %s: %w", node.GetID(), err))
 		}
 	}
+
+	for _, node := range allNodes {
+		ctx, cancel := context.WithTimeout(context.Background(), DefaultNodeStopTimeout)
+		defer cancel()
+		if err := node.WaitForProcessStopped(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("failed to wait for node %s to stop: %w", node.GetID(), err))
+		}
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf("failed to stop network:\n%w", errors.Join(errs...))
 	}

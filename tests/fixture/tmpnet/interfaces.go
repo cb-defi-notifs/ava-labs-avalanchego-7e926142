@@ -28,6 +28,7 @@ type Node interface {
 	GetConfig() NodeConfig
 	GetProcessContext() node.NodeProcessContext
 	IsHealthy(ctx context.Context) (bool, error)
-	Stop(ctx context.Context) error
+	Stop(ctx context.Context, waitForStopped bool) error
+	WaitForProcessStopped(ctx context.Context) error
 	Restart(ctx context.Context, w io.Writer, defaultExecPath string, bootstrapIPs []string, bootstrapIDs []string) error
 }
