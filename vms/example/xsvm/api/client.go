@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -18,6 +17,8 @@ import (
 	"github.com/ava-labs/avalanchego/vms/example/xsvm/tx"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 )
+
+const defaultPollingInterval = 50 * time.Millisecond
 
 var (
 	errNotAccepted = errors.New("failed to see the tx accepted before timeout")
@@ -70,8 +71,8 @@ type Client interface {
 	) (*warp.UnsignedMessage, []byte, error)
 	WaitForAcceptance(
 		ctx context.Context,
-		txID ids.ID,
-		pollingInterval time.Duration,
+		address ids.ShortID,
+		nonce uint64,
 		options ...rpc.Option,
 	) error
 }
@@ -257,22 +258,21 @@ func (c *client) Message(
 
 func (c *client) WaitForAcceptance(
 	ctx context.Context,
-	txID ids.ID,
-	pollingInterval time.Duration,
+	address ids.ShortID,
+	nonce uint64,
 	options ...rpc.Option,
 ) error {
-	ticker := time.NewTicker(pollingInterval)
+	ticker := time.NewTicker(defaultPollingInterval)
 	defer ticker.Stop()
 	for {
-		_, _, err := c.Message(ctx, txID, options...)
-		if err == nil {
-			// Transaction was accepted
-			return nil
-		}
-		// If the transaction has not yet been accepted, the API call to
-		// xsvm.message will return 'not found'.
-		if !strings.Contains(fmt.Sprintf("%s", err), "not found") {
+		currentNonce, err := c.Nonce(ctx, address, options...)
+		if err != nil {
 			return err
+		}
+		if currentNonce > nonce {
+			// The nonce increasing indicates the acceptance of a
+			// transaction issued with the original nonce
+			return nil
 		}
 
 		select {

@@ -19,7 +19,6 @@ import (
 	"github.com/ava-labs/avalanchego/tests/fixture/tmpnet"
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/utils/units"
-	"github.com/ava-labs/avalanchego/vms/example/xsvm/api"
 	"github.com/ava-labs/avalanchego/vms/example/xsvm/cmd/issue/export"
 	"github.com/ava-labs/avalanchego/vms/example/xsvm/cmd/issue/importtx"
 	"github.com/ava-labs/avalanchego/vms/example/xsvm/cmd/issue/transfer"
@@ -159,9 +158,6 @@ var _ = e2e.DescribePChain("[Warp]", func() {
 		)
 		require.NoError(err)
 		tests.Outf(" issued transaction with ID: %s\n", exportTxStatus.TxID)
-		tests.Outf(" waiting for transaction to be accepted...\n")
-		apiClient := api.NewClient(exportNodeURI.URI, sourceChainID.String())
-		require.NoError(apiClient.WaitForAcceptance(e2e.DefaultContext(), exportTxStatus.TxID, e2e.DefaultPollingInterval))
 
 		ginkgo.By(fmt.Sprintf("issuing transactions on chain %s on subnet %s to activate snowman++ consensus",
 			destinationChainID, destinationSubnet.ID))
@@ -169,7 +165,6 @@ var _ = e2e.DescribePChain("[Warp]", func() {
 		tests.Outf(" issuing transactions on %s (%s)\n", destinationNodeURI.NodeID, destinationNodeURI.URI)
 		recipientKey, err := keyFactory.NewPrivateKey()
 		require.NoError(err)
-		apiClient = api.NewClient(destinationNodeURI.URI, destinationChainID.String())
 		for i := 0; i < 3; i++ {
 			transferTxStatus, err := transfer.Transfer(
 				e2e.DefaultContext(),
@@ -184,8 +179,6 @@ var _ = e2e.DescribePChain("[Warp]", func() {
 			)
 			require.NoError(err)
 			tests.Outf(" issued transaction with ID: %s\n", transferTxStatus.TxID)
-			tests.Outf(" waiting for transaction to be accepted...\n")
-			require.NoError(apiClient.WaitForAcceptance(e2e.DefaultContext(), transferTxStatus.TxID, e2e.DefaultPollingInterval))
 		}
 
 		ginkgo.By(fmt.Sprintf("importing to blockchain %s on subnet %s", destinationChainID, destinationSubnet.ID))
@@ -208,8 +201,6 @@ var _ = e2e.DescribePChain("[Warp]", func() {
 		require.NoError(err)
 		tests.Outf(" issued transaction with ID: %s\n", importTxStatus.TxID)
 		tests.Outf(" waiting for transaction to be accepted...\n")
-		apiClient = api.NewClient(destinationNodeURI.URI, destinationChainID.String())
-		require.NoError(apiClient.WaitForAcceptance(e2e.DefaultContext(), importTxStatus.TxID, e2e.DefaultPollingInterval))
 
 		// TODO(marun) Verify the balances on both chains
 		// TODO(marun) Ensure a short validation period if persistence is not configured? or use a private network?

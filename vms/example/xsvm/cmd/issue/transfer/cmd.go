@@ -49,7 +49,8 @@ func transferFunc(c *cobra.Command, args []string) error {
 func Transfer(ctx context.Context, config *Config) (*tx.TxIssueStatus, error) {
 	client := api.NewClient(config.URI, config.ChainID.String())
 
-	nonce, err := client.Nonce(ctx, config.PrivateKey.Address())
+	address := config.PrivateKey.Address()
+	nonce, err := client.Nonce(ctx, address)
 	if err != nil {
 		return nil, err
 	}
@@ -69,6 +70,11 @@ func Transfer(ctx context.Context, config *Config) (*tx.TxIssueStatus, error) {
 
 	issueTxStartTime := time.Now()
 	txID, err := client.IssueTx(ctx, stx)
+	if err != nil {
+		return nil, err
+	}
+
+	err = client.WaitForAcceptance(ctx, address, nonce)
 	if err != nil {
 		return nil, err
 	}
