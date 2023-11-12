@@ -14,7 +14,8 @@ func TestNetworkSerialization(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	network := &LocalNetwork{Dir: tmpDir}
+	network, err := NewLocalNetwork(tmpDir)
+	require.NoError(err)
 	require.NoError(network.PopulateLocalNetworkConfig(1337, 1, 1))
 	require.NoError(network.WriteAll())
 
