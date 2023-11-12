@@ -20,9 +20,7 @@ import (
 
 const defaultPollingInterval = 50 * time.Millisecond
 
-var (
-	errNotAccepted = errors.New("failed to see the tx accepted before timeout")
-)
+var errNotAccepted = errors.New("failed to see the tx accepted before timeout")
 
 // Client defines the xsvm API client.
 type Client interface {
