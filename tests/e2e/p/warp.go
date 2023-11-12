@@ -15,7 +15,7 @@ import (
 
 	"github.com/ava-labs/avalanchego/config"
 	"github.com/ava-labs/avalanchego/tests"
-	"github.com/ava-labs/avalanchego/tests/e2e"
+	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
 	"github.com/ava-labs/avalanchego/tests/fixture/tmpnet"
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/utils/units"
@@ -50,7 +50,6 @@ var _ = e2e.DescribePChain("[Warp]", func() {
 				destinationSubnet = subnet
 			}
 		}
-		keyFactory := secp256k1.Factory{}
 		if sourceSubnet != nil && destinationSubnet != nil {
 			tests.Outf(" subnets exist and will be reused\n")
 			if len(os.Getenv("E2E_RESTART_SUBNETS")) > 0 {
@@ -70,11 +69,11 @@ var _ = e2e.DescribePChain("[Warp]", func() {
 			nodeURI := e2e.Env.GetRandomNodeURI()
 			keychain := e2e.Env.NewKeychain(1)
 			privateKey := keychain.Keys[0]
-			baseWallet := e2e.Env.NewWallet(keychain, nodeURI)
+			baseWallet := e2e.NewWallet(keychain, nodeURI)
 			pWallet := baseWallet.P()
 
 			ginkgo.By("defining the specification of an xsvm subnet")
-			fundedKey, err := keyFactory.NewPrivateKey()
+			fundedKey, err := secp256k1.NewPrivateKey()
 			require.NoError(err)
 			genesisBytes, err := genesis.Codec.Marshal(genesis.Version, &genesis.Genesis{
 				Timestamp: 0,
@@ -163,7 +162,7 @@ var _ = e2e.DescribePChain("[Warp]", func() {
 			destinationChainID, destinationSubnet.ID))
 		destinationNodeURI := destinationNodeURIs[0]
 		tests.Outf(" issuing transactions on %s (%s)\n", destinationNodeURI.NodeID, destinationNodeURI.URI)
-		recipientKey, err := keyFactory.NewPrivateKey()
+		recipientKey, err := secp256k1.NewPrivateKey()
 		require.NoError(err)
 		for i := 0; i < 3; i++ {
 			transferTxStatus, err := transfer.Transfer(
