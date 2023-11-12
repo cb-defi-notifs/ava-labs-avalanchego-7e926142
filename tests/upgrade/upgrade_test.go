@@ -54,7 +54,7 @@ var _ = ginkgo.Describe("[Upgrade]", func() {
 		ginkgo.By(fmt.Sprintf("restarting all nodes with %q binary", avalancheGoExecPathToUpgradeTo))
 		for _, node := range network.Nodes {
 			ginkgo.By(fmt.Sprintf("restarting node %q with %q binary", node.GetID(), avalancheGoExecPathToUpgradeTo))
-			require.NoError(node.Stop(e2e.DefaultContext()))
+			require.NoError(node.Stop(e2e.DefaultContext(), true /* waitForProcessStopped */))
 
 			// A node must start with sufficient bootstrap nodes to represent a quorum. Since the node's current
 			// bootstrap configuration may not satisfy this requirement (i.e. if on network start the node was one of
