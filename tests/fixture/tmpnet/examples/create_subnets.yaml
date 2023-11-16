@@ -1,0 +1,56 @@
+# Create 2 subnets on an existing network
+type: CreateSubnets
+version: 0.1.0
+spec:
+  # The network that will be targeted for modification will be chosen outside of this configuration
+
+  flagSets:
+    - name: custom
+      flags:
+        plugin-dir: /path/to/plugins
+  nodeSets:
+    - name: "local-subnet1"
+      nodeType: local
+      flagSet: custom
+      count: 2
+      subnets:
+        - subnet1
+    - name: "local-subnet2"
+      flagSet: custom
+      # Reference to node type defined for the target network
+      nodeType: local
+      count: 2
+      subnets:
+        - subnet2
+  subnets:
+    - name: subnet1
+      blockchains:
+        - vmName: xsvm
+          chainConfig: "<config contents>"
+          genesis: "<genesis content>"
+    - name: subnet2
+      blockchains:
+        - vmName: xsvm
+          chainConfig: "<config contents>"
+          genesis: "<genesis content>"
+status:
+  nodeSets:
+    - name: "local-subnet1"
+      ids:
+        - "NodeID-Bfc2pN3FSXNoaEUiDpSfYiQagFafEDxx6"
+        - "NodeID-LwmrQ576puNyezY479DpJdbHuSxdRrGRb"
+    - name: "local-subnet2"
+      ids:
+        - "NodeID-Bfc2pN3FSXNoaEUiDpSfYiQagFafEDxx6"
+        - "NodeID-LwmrQ576puNyezY479DpJdbHuSxdRrGRb"
+  subnets:
+    - name: subnet1
+      id: 0x392d5abdc
+      blockchains:
+        vmName: xsvm
+        id: 0x7f10540
+    - name: subnet2
+      id: 0xf38dc62f5
+      blockchains:
+        vmName: xsvm
+        id: 0xed79b0e63

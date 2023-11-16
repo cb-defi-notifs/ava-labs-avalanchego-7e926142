@@ -1,0 +1,22 @@
+# Create a 2 node network with default configuration
+type: CreateNetwork
+version: 0.1.0
+spec:
+  nodeTypes:
+    - name: local
+      localNodeConfig:
+        avalanchegoPath: /path/to/avalanchego
+  nodeSets:
+    - name: "local"
+      # Nodes use default local network configuration
+      nodeType: local
+      count: 2
+      subnets:
+        # Initial validators of primary network
+        - primary
+status:
+  nodeSets:
+    - name: "local"
+      ids:
+        - "NodeID-Bfc2pN3FSXNoaEUiDpSfYiQagFafEDxx6"
+        - "NodeID-LwmrQ576puNyezY479DpJdbHuSxdRrGRb"

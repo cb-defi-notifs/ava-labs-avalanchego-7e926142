@@ -1,0 +1,57 @@
+# Create a network with 2 subnets
+type: CreateNetwork
+version: 0.1.0
+spec:
+  flagSets:
+    - name: default
+      flags:
+        plugin-dir: /path/to/plugins
+  nodeTypes:
+    - name: local
+      flagSet: default
+      localNodeConfig:
+        avalanchegoPath: /path/to/avalanchego
+  nodeSets:
+    - name: "local-subnet1"
+      nodeType: local
+      count: 2
+      subnets:
+        # Both initial validators of primary network and validators of subnet1
+        - primary
+        - subnet1
+    - name: "local-subnet2"
+      nodeType: local
+      count: 2
+      subnets:
+        # Only validators of subnet2
+        - subnet2
+  subnets:
+    - name: subnet1
+      blockchains:
+        - vmName: xsvm
+          genesis: "<genesis content>"
+    - name: subnet2
+      blockchains:
+        - vmName: xsvm
+          genesis: "<genesis content>"
+status:
+  nodeSets:
+    - name: "local-subnet1"
+      ids:
+        - "NodeID-Bfc2pN3FSXNoaEUiDpSfYiQagFafEDxx6"
+        - "NodeID-LwmrQ576puNyezY479DpJdbHuSxdRrGRb"
+    - name: "local-subnet2"
+      ids:
+        - "NodeID-Bfc2pN3FSXNoaEUiDpSfYiQagFafEDxx6"
+        - "NodeID-LwmrQ576puNyezY479DpJdbHuSxdRrGRb"
+  subnets:
+    - name: subnet1
+      id: 0x392d5abdc
+      blockchains:
+        vmName: xsvm
+        id: 0x7f10540
+    - name: subnet2
+      id: 0xf38dc62f5
+      blockchains:
+        vmName: xsvm
+        id: 0xed79b0e63
