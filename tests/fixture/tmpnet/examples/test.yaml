@@ -1,0 +1,49 @@
+# Detailed specification of the fields of the CreateNetwork type
+type: CreateNetwork
+version: 0.1.0
+# Declarative configuration for a new network. There is not a direct correlation
+# between this structure and the configuration of a running network due to
+# opportunistic data normalization.
+networkSpec:
+  genesis: "<primary network genesis content>"
+  # Sets of node flags that can be applied to node types via the `flagSet` field
+  flagSets:
+      # The name that can be used in a nodeConfig.flag
+    - name: default
+      # Any node flag can be specified here.
+      flags:
+        - "api-admin-enabled": true
+        - "plugin-dir": /path/to/plugins
+    - name: custom_plugin_dir
+      flags:
+        - "plugin-dir": /other/path/to/plugins
+  # Configurations of nodes that can be instantiated. At least one must exist.
+  initialStakers:
+    - count: 5
+status:
+  defaults:
+    - "network-max-reconnect-delay": 1s
+    - "network-peer-list-gossip-frequency": 250ms
+    - "public-ip": 127.0.0.1
+    - "staking-host": 127.0.0.1
+  nodeTypes:
+    - name: local
+      localNodeConfig:
+        execPath: /home/maru/src/avalanchego/build/avalanchego
+  # The results of network instantiation. Not maintained after instantiation.
+  preFundedKeys:
+    - "PrivateKey-9EZqwJCTDLTDCSpPa4UvegMeXKgtiDqxuuwx7o8A6kQH6JSBX"
+    - "PrivateKey-2KFbuiSm49Tj5R8iDEkFRV3PxBRH5RRdxfoBNWTbNA8jJxuaqQ"
+    - "PrivateKey-23nmhT6SVwHJVo5ACe4v4ocWiV7RPP665QZ4aefw3BV4CYz9W9"
+    - "PrivateKey-2sr3A4KGWdYnQys2dniuf8Wru88HCi69upfdvXf1vh74FFznoA"
+    - "PrivateKey-UtKP7WJfEWGf4fZwv13abqELo5yHz9DxPVGN9yCwgXbS8i6w8"
+  # The IDs of the nodes that were created for a given node set.
+  initialStakers:
+    - name: local
+      nodeType: local
+      nodeIDs:
+        - "NodeID-Bfc2pN3FSXNoaEUiDpSfYiQagFafEDxx6"
+        - "NodeID-2bo4NSBT76kds4uU7ohP4Erdc6kWXLtiU"
+        - "NodeID-3qVj3T7XCwcnF9U8JsAiGpo1Vz7VnRMfg"
+        - "NodeID-5z8TycMnUFnMxPz8ggGM9kdLHJs9fo3hC"
+        - "NodeID-Fwucnj6t3kDuJdeVWRMw3Pkh8QqGykqnq"
