@@ -142,7 +142,7 @@ func DefaultEventually(condition func() bool, msg string) {
 func AddEphemeralNode(network tmpnet.Network, flags tmpnet.FlagsMap) tmpnet.Node {
 	require := require.New(ginkgo.GinkgoT())
 
-	node, err := network.AddEphemeralNode(ginkgo.GinkgoWriter, flags)
+	node, err := network.AddEphemeralNode(DefaultContext(), ginkgo.GinkgoWriter, flags)
 	require.NoError(err)
 
 	RegisterNodeforCleanup(node)
@@ -216,12 +216,16 @@ func CheckBootstrapIsPossible(network tmpnet.Network) {
 	// checking for bootstrap implicitly on teardown via a function registered
 	// with ginkgo.DeferCleanup. It's not possible to call DeferCleanup from
 	// within a function called by DeferCleanup.
-	node, err := network.AddEphemeralNode(ginkgo.GinkgoWriter, tmpnet.FlagsMap{})
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultTimeout)
+	defer cancel()
+	node, err := network.AddEphemeralNode(ctx, ginkgo.GinkgoWriter, tmpnet.FlagsMap{})
 	require.NoError(err)
 
 	defer func() {
 		tests.Outf("Shutting down ephemeral node %s\n", node.GetID())
-		require.NoError(node.Stop())
+		ctx, cancel := context.WithTimeout(context.Background(), DefaultTimeout)
+		defer cancel()
+		require.NoError(node.Stop(ctx, true /* waitForProcessStopped */))
 	}()
 
 	WaitForHealthy(node)

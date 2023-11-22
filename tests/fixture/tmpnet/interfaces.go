@@ -15,7 +15,7 @@ import (
 type Network interface {
 	GetConfig() NetworkConfig
 	GetNodes() []Node
-	AddEphemeralNode(w io.Writer, flags FlagsMap) (Node, error)
+	AddEphemeralNode(ctx context.Context, w io.Writer, flags FlagsMap) (Node, error)
 	GetEphemeralNodes(nodeIDs []ids.NodeID) ([]Node, error)
 	GetSubnets() ([]*Subnet, error)
 	WriteSubnets([]*Subnet) error

@@ -128,14 +128,14 @@ func (ln *LocalNetwork) GetNodes() []tmpnet.Node {
 }
 
 // Adds a backend-agnostic ephemeral node to the network
-func (ln *LocalNetwork) AddEphemeralNode(w io.Writer, flags tmpnet.FlagsMap) (tmpnet.Node, error) {
+func (ln *LocalNetwork) AddEphemeralNode(ctx context.Context, w io.Writer, flags tmpnet.FlagsMap) (tmpnet.Node, error) {
 	if flags == nil {
 		flags = tmpnet.FlagsMap{}
 	} else {
 		// Avoid modifying the input flags map
 		flags = flags.Copy()
 	}
-	return ln.AddLocalNode(w, &LocalNode{
+	return ln.AddLocalNode(ctx, w, &LocalNode{
 		NodeConfig: tmpnet.NodeConfig{
 			Flags: flags,
 		},
@@ -691,7 +691,7 @@ func (ln *LocalNetwork) ReadAll() error {
 	return ln.ReadNodes()
 }
 
-func (ln *LocalNetwork) AddLocalNode(w io.Writer, node *LocalNode, isEphemeral bool) (*LocalNode, error) {
+func (ln *LocalNetwork) AddLocalNode(ctx context.Context, w io.Writer, node *LocalNode, isEphemeral bool) (*LocalNode, error) {
 	// Assume network configuration has been written to disk and is current in memory
 
 	if node == nil {
@@ -738,7 +738,7 @@ func (ln *LocalNetwork) AddLocalNode(w io.Writer, node *LocalNode, isEphemeral b
 	if err != nil {
 		// Attempt to stop an unhealthy node to provide some assurance to the caller
 		// that an error condition will not result in a lingering process.
-		stopErr := node.Stop()
+		stopErr := node.Stop(ctx, true /* waitForProcessStopped */)
 		if stopErr != nil {
 			err = errors.Join(err, stopErr)
 		}

@@ -256,7 +256,7 @@ func CreateSubnet(
 		flags := nodeSpec.Flags.Copy()
 		flags[config.TrackSubnetsKey] = subnetID.String()
 		for i := 0; i < nodeSpec.Count; i++ {
-			node, err := network.AddEphemeralNode(w, flags)
+			node, err := network.AddEphemeralNode(ctx, w, flags)
 			if err != nil {
 				return nil, err
 			}
