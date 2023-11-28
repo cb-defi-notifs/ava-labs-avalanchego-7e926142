@@ -17,7 +17,6 @@ import (
 	"github.com/ava-labs/avalanchego/tests"
 	"github.com/ava-labs/avalanchego/tests/fixture"
 	"github.com/ava-labs/avalanchego/tests/fixture/tmpnet"
-	"github.com/ava-labs/avalanchego/tests/fixture/tmpnet/local"
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/utils/perms"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
@@ -64,10 +63,10 @@ func NewTestEnvironment(flagVars *FlagVars) *TestEnvironment {
 	networkDir := flagVars.NetworkDir()
 
 	// Load or create a test network
-	var network *local.LocalNetwork
+	var network *tmpnet.LocalNetwork
 	if len(networkDir) > 0 {
 		var err error
-		network, err = local.ReadNetwork(networkDir)
+		network, err = tmpnet.ReadNetwork(networkDir)
 		require.NoError(err)
 		tests.Outf("{{yellow}}Using an existing network configured at %s{{/}}\n", network.Dir)
 	} else {
@@ -105,7 +104,7 @@ func (te *TestEnvironment) GetRandomNodeURI() tmpnet.NodeURI {
 
 // Retrieve the network to target for testing.
 func (te *TestEnvironment) GetNetwork() tmpnet.Network {
-	network, err := local.ReadNetwork(te.NetworkDir)
+	network, err := tmpnet.ReadNetwork(te.NetworkDir)
 	te.require.NoError(err)
 	return network
 }
@@ -132,7 +131,7 @@ func (te *TestEnvironment) NewKeychain(count int) *secp256k1fx.Keychain {
 // Create a new private network that is not shared with other tests.
 func (te *TestEnvironment) NewPrivateNetwork() tmpnet.Network {
 	// Load the shared network to retrieve its path and exec path
-	sharedNetwork, err := local.ReadNetwork(te.NetworkDir)
+	sharedNetwork, err := tmpnet.ReadNetwork(te.NetworkDir)
 	te.require.NoError(err)
 
 	// The private networks dir is under the shared network dir to ensure it

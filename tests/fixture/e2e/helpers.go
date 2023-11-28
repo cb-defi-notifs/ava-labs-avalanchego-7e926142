@@ -23,7 +23,6 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/tests"
 	"github.com/ava-labs/avalanchego/tests/fixture/tmpnet"
-	"github.com/ava-labs/avalanchego/tests/fixture/tmpnet/local"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs/executor"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
@@ -233,15 +232,15 @@ func CheckBootstrapIsPossible(network tmpnet.Network) {
 }
 
 // Start a local test-managed network with the provided avalanchego binary.
-func StartLocalNetwork(avalancheGoExecPath string, networkDir string) *local.LocalNetwork {
+func StartLocalNetwork(avalancheGoExecPath string, networkDir string) *tmpnet.LocalNetwork {
 	require := require.New(ginkgo.GinkgoT())
 
-	network, err := local.StartNetwork(
+	network, err := tmpnet.StartNetwork(
 		DefaultContext(),
 		ginkgo.GinkgoWriter,
 		networkDir,
-		&local.LocalNetwork{
-			LocalConfig: local.LocalConfig{
+		&tmpnet.LocalNetwork{
+			LocalConfig: tmpnet.LocalConfig{
 				ExecPath: avalancheGoExecPath,
 			},
 		},

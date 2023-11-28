@@ -33,6 +33,11 @@ import (
 )
 
 const (
+	// Constants defining the names of shell variables whose value can
+	// configure network orchestration.
+	NetworkDirEnvName = "TMPNET_NETWORK_DIR"
+	RootDirEnvName    = "TMPNET_ROOT_DIR"
+
 	DefaultNodeCount      = 2 // Minimum required to ensure connectivity-based health checks will pass
 	DefaultFundedKeyCount = 50
 

@@ -1,7 +1,7 @@
 // Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
-package local
+package tmpnet
 
 import (
 	"context"
@@ -18,7 +18,6 @@ import (
 	"github.com/ava-labs/avalanchego/config"
 	"github.com/ava-labs/avalanchego/genesis"
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/tests/fixture/tmpnet"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/utils/formatting/address"
@@ -47,6 +46,35 @@ var (
 	errInvalidNetworkDir     = errors.New("failed to write local network: invalid network directory")
 	errMissingBootstrapNodes = errors.New("failed to add node due to missing bootstrap nodes")
 )
+
+// A set of flags appropriate for local testing.
+func LocalFlags() FlagsMap {
+	// Supply only non-default configuration to ensure that default values will be used.
+	return FlagsMap{
+		config.NetworkPeerListGossipFreqKey: "250ms",
+		config.NetworkMaxReconnectDelayKey:  "1s",
+		config.PublicIPKey:                  "127.0.0.1",
+		config.HTTPHostKey:                  "127.0.0.1",
+		config.StakingHostKey:               "127.0.0.1",
+		config.HealthCheckFreqKey:           "2s",
+		config.AdminAPIEnabledKey:           true,
+		config.IpcAPIEnabledKey:             true,
+		config.IndexEnabledKey:              true,
+		config.LogDisplayLevelKey:           "INFO",
+		config.LogLevelKey:                  "DEBUG",
+		config.MinStakeDurationKey:          DefaultMinStakeDuration.String(),
+	}
+}
+
+// C-Chain config for local testing.
+func LocalCChainConfig() FlagsMap {
+	// Supply only non-default configuration to ensure that default
+	// values will be used. Available C-Chain configuration options are
+	// defined in the `github.com/ava-labs/coreth/evm` package.
+	return FlagsMap{
+		"log-level": "trace",
+	}
+}
 
 // Default root dir for storing networks and their configuration.
 func GetDefaultRootDir() (string, error) {
@@ -89,7 +117,7 @@ func FindNextNetworkID(rootDir string) (uint32, string, error) {
 
 // Defines the configuration required for a local network (i.e. one composed of local processes).
 type LocalNetwork struct {
-	tmpnet.NetworkConfig
+	NetworkConfig
 	LocalConfig
 
 	// Nodes with local configuration
@@ -118,25 +146,25 @@ func NewLocalNetwork(dir string) (*LocalNetwork, error) {
 }
 
 // Returns the configuration of the network in backend-agnostic form.
-func (ln *LocalNetwork) GetConfig() tmpnet.NetworkConfig {
+func (ln *LocalNetwork) GetConfig() NetworkConfig {
 	return ln.NetworkConfig
 }
 
 // Returns the nodes of the network in backend-agnostic form.
-func (ln *LocalNetwork) GetNodes() []tmpnet.Node {
+func (ln *LocalNetwork) GetNodes() []Node {
 	return localNodeSliceToNodeSlice(ln.Nodes)
 }
 
 // Adds a backend-agnostic ephemeral node to the network
-func (ln *LocalNetwork) AddEphemeralNode(ctx context.Context, w io.Writer, flags tmpnet.FlagsMap) (tmpnet.Node, error) {
+func (ln *LocalNetwork) AddEphemeralNode(ctx context.Context, w io.Writer, flags FlagsMap) (Node, error) {
 	if flags == nil {
-		flags = tmpnet.FlagsMap{}
+		flags = FlagsMap{}
 	} else {
 		// Avoid modifying the input flags map
 		flags = flags.Copy()
 	}
 	return ln.AddLocalNode(ctx, w, &LocalNode{
-		NodeConfig: tmpnet.NodeConfig{
+		NodeConfig: NodeConfig{
 			Flags: flags,
 		},
 	}, true /* isEphemeral */)
@@ -299,7 +327,7 @@ func (ln *LocalNetwork) PopulateLocalNetworkConfig(networkID uint32, nodeCount i
 
 	if _, ok := ln.ChainConfigs["C"]; !ok {
 		if ln.ChainConfigs == nil {
-			ln.ChainConfigs = map[string]tmpnet.FlagsMap{}
+			ln.ChainConfigs = map[string]FlagsMap{}
 		}
 		ln.ChainConfigs["C"] = LocalCChainConfig()
 	}
@@ -329,7 +357,7 @@ func (ln *LocalNetwork) PopulateNodeConfig(node *LocalNode, nodeParentDir string
 
 	// Set values common to all nodes
 	flags.SetDefaults(ln.DefaultFlags)
-	flags.SetDefaults(tmpnet.FlagsMap{
+	flags.SetDefaults(FlagsMap{
 		config.GenesisFileKey:    ln.GetGenesisPath(),
 		config.ChainConfigDirKey: ln.GetChainConfigDir(),
 	})
@@ -416,7 +444,7 @@ func (ln *LocalNetwork) WaitForHealthy(ctx context.Context, w io.Writer) error {
 			}
 
 			healthy, err := node.IsHealthy(ctx)
-			if err != nil && !errors.Is(err, tmpnet.ErrNotRunning) {
+			if err != nil && !errors.Is(err, ErrNotRunning) {
 				return err
 			}
 			if !healthy {
@@ -440,19 +468,19 @@ func (ln *LocalNetwork) WaitForHealthy(ctx context.Context, w io.Writer) error {
 
 // Retrieve API URIs for all running primary validator nodes. URIs for
 // ephemeral nodes are not returned.
-func (ln *LocalNetwork) GetURIs() []tmpnet.NodeURI {
-	// Cast from []*LocalNode to []tmpnet.Node
-	nodes := make([]tmpnet.Node, len(ln.Nodes))
+func (ln *LocalNetwork) GetURIs() []NodeURI {
+	// Cast from []*LocalNode to []Node
+	nodes := make([]Node, len(ln.Nodes))
 	for i, node := range ln.Nodes {
 		nodes[i] = node
 	}
-	return tmpnet.GetNodeURIs(nodes)
+	return GetNodeURIs(nodes)
 }
 
 // Stop all nodes in the network.
 func (ln *LocalNetwork) Stop() error {
 	// Assume the nodes are loaded and the pids are current
-	allNodes := []tmpnet.Node{}
+	allNodes := []Node{}
 	for _, node := range ln.Nodes {
 		allNodes = append(allNodes, node)
 	}
@@ -506,7 +534,7 @@ func (ln *LocalNetwork) ReadGenesis() error {
 }
 
 func (ln *LocalNetwork) WriteGenesis() error {
-	bytes, err := tmpnet.DefaultJSONMarshal(ln.Genesis)
+	bytes, err := DefaultJSONMarshal(ln.Genesis)
 	if err != nil {
 		return fmt.Errorf("failed to marshal genesis: %w", err)
 	}
@@ -529,7 +557,7 @@ func (ln *LocalNetwork) ReadChainConfigs() error {
 
 	// Clear the map of data that may end up stale (e.g. if a given
 	// chain is in the map but no longer exists on disk)
-	ln.ChainConfigs = map[string]tmpnet.FlagsMap{}
+	ln.ChainConfigs = map[string]FlagsMap{}
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -543,7 +571,7 @@ func (ln *LocalNetwork) ReadChainConfigs() error {
 			// No config file present
 			continue
 		}
-		chainConfig, err := tmpnet.ReadFlagsMap(configPath, fmt.Sprintf("%s chain config", chainAlias))
+		chainConfig, err := ReadFlagsMap(configPath, fmt.Sprintf("%s chain config", chainAlias))
 		if err != nil {
 			return err
 		}
@@ -577,7 +605,7 @@ func (ln *LocalNetwork) WriteChainConfigs() error {
 
 // Used to marshal/unmarshal persistent local network defaults.
 type localDefaults struct {
-	Flags      tmpnet.FlagsMap
+	Flags      FlagsMap
 	ExecPath   string
 	FundedKeys []*secp256k1.PrivateKey
 }
@@ -607,7 +635,7 @@ func (ln *LocalNetwork) WriteDefaults() error {
 		ExecPath:   ln.ExecPath,
 		FundedKeys: ln.FundedKeys,
 	}
-	bytes, err := tmpnet.DefaultJSONMarshal(defaults)
+	bytes, err := DefaultJSONMarshal(defaults)
 	if err != nil {
 		return fmt.Errorf("failed to marshal defaults: %w", err)
 	}
@@ -774,11 +802,11 @@ func (ln *LocalNetwork) GetBootstrapIPsAndIDs() ([]string, []string, error) {
 	return bootstrapIPs, bootstrapIDs, nil
 }
 
-func (ln *LocalNetwork) GetEphemeralNodes(nodeIDs []ids.NodeID) ([]tmpnet.Node, error) {
+func (ln *LocalNetwork) GetEphemeralNodes(nodeIDs []ids.NodeID) ([]Node, error) {
 	ephemeralDir := filepath.Join(ln.Dir, defaultEphemeralDirName)
 
 	if _, err := os.Stat(ephemeralDir); os.IsNotExist(err) {
-		return []tmpnet.Node{}, nil
+		return []Node{}, nil
 	} else if err != nil {
 		return nil, err
 	}
@@ -799,11 +827,11 @@ func (ln *LocalNetwork) GetEphemeralNodes(nodeIDs []ids.NodeID) ([]tmpnet.Node, 
 	return localNodeSliceToNodeSlice(nodes), nil
 }
 
-func (ln *LocalNetwork) GetSubnets() ([]*tmpnet.Subnet, error) {
+func (ln *LocalNetwork) GetSubnets() ([]*Subnet, error) {
 	subnetDir := filepath.Join(ln.Dir, defaultSubnetDirName)
 
 	if _, err := os.Stat(subnetDir); os.IsNotExist(err) {
-		return []*tmpnet.Subnet{}, nil
+		return []*Subnet{}, nil
 	} else if err != nil {
 		return nil, err
 	}
@@ -814,7 +842,7 @@ func (ln *LocalNetwork) GetSubnets() ([]*tmpnet.Subnet, error) {
 		return nil, fmt.Errorf("failed to read subnet dir: %w", err)
 	}
 
-	subnets := []*tmpnet.Subnet{}
+	subnets := []*Subnet{}
 	for _, entry := range entries {
 		if entry.IsDir() {
 			// Looking only for files
@@ -830,7 +858,7 @@ func (ln *LocalNetwork) GetSubnets() ([]*tmpnet.Subnet, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to read subnet file %s: %w", subnetPath, err)
 		}
-		subnet := &tmpnet.Subnet{}
+		subnet := &Subnet{}
 		if err := json.Unmarshal(bytes, subnet); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal subnet from %s: %w", subnetPath, err)
 		}
@@ -841,8 +869,8 @@ func (ln *LocalNetwork) GetSubnets() ([]*tmpnet.Subnet, error) {
 	return subnets, nil
 }
 
-func localNodeSliceToNodeSlice(localNodes []*LocalNode) []tmpnet.Node {
-	nodes := make([]tmpnet.Node, 0, len(localNodes))
+func localNodeSliceToNodeSlice(localNodes []*LocalNode) []Node {
+	nodes := make([]Node, 0, len(localNodes))
 	for _, localNode := range localNodes {
 		nodes = append(nodes, localNode)
 	}
@@ -881,14 +909,14 @@ func ReadNodes(dir string, skipFunc func(nodeID string) bool) ([]*LocalNode, err
 	return nodes, nil
 }
 
-func (ln *LocalNetwork) WriteSubnets(subnets []*tmpnet.Subnet) error {
+func (ln *LocalNetwork) WriteSubnets(subnets []*Subnet) error {
 	subnetDir := filepath.Join(ln.Dir, defaultSubnetDirName)
 	if err := os.MkdirAll(subnetDir, perms.ReadWriteExecute); err != nil {
 		return fmt.Errorf("failed to create subnet dir: %w", err)
 	}
 
 	for _, subnet := range subnets {
-		bytes, err := tmpnet.DefaultJSONMarshal(subnet)
+		bytes, err := DefaultJSONMarshal(subnet)
 		if err != nil {
 			return fmt.Errorf("failed to marshal subnet: %w", err)
 		}
@@ -901,7 +929,7 @@ func (ln *LocalNetwork) WriteSubnets(subnets []*tmpnet.Subnet) error {
 	return nil
 }
 
-func (ln *LocalNetwork) RestartSubnets(ctx context.Context, w io.Writer, subnets ...*tmpnet.Subnet) error {
+func (ln *LocalNetwork) RestartSubnets(ctx context.Context, w io.Writer, subnets ...*Subnet) error {
 	for _, subnet := range subnets {
 		nodes, err := subnet.GetNodes(ln)
 		if err != nil {
@@ -924,7 +952,7 @@ func (ln *LocalNetwork) RestartSubnets(ctx context.Context, w io.Writer, subnets
 			if _, err := fmt.Fprintf(w, " waiting for node %s to report healthy\n", node.GetID()); err != nil {
 				return err
 			}
-			err = tmpnet.WaitForHealthy(ctx, node)
+			err = WaitForHealthy(ctx, node)
 			if err != nil {
 				return err
 			}
@@ -935,7 +963,7 @@ func (ln *LocalNetwork) RestartSubnets(ctx context.Context, w io.Writer, subnets
 
 // TODO(marun) Need to learn more about the semantics of network restart. Initially starting a network
 // doesn't require that all nodes be reachable, but for an existing network that clearly is not the case.
-func (ln *LocalNetwork) BootstrapIPsandIDsForNode(nodeID ids.NodeID, subnets []*tmpnet.Subnet) ([]string, []string, error) {
+func (ln *LocalNetwork) BootstrapIPsandIDsForNode(nodeID ids.NodeID, subnets []*Subnet) ([]string, []string, error) {
 	bootstrapIPs, bootstrapIDs, err := ln.GetBootstrapIPsAndIDs()
 	if err != nil {
 		return nil, nil, err
