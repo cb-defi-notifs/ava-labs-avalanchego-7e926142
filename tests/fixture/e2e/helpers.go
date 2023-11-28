@@ -24,6 +24,7 @@ import (
 	"github.com/ava-labs/avalanchego/tests"
 	"github.com/ava-labs/avalanchego/tests/fixture/tmpnet"
 	"github.com/ava-labs/avalanchego/tests/fixture/tmpnet/local"
+	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs/executor"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/avalanchego/wallet/subnet/primary"
@@ -67,7 +68,7 @@ func NewWallet(keychain *secp256k1fx.Keychain, nodeURI tmpnet.NodeURI) primary.W
 }
 
 // Create a new wallet for the provided keychain against the specified node URI.
-func NewWalletWithTxIDs(keychain *secp256k1fx.Keychain, nodeURI testnet.NodeURI, txIDs ...ids.ID) primary.Wallet {
+func NewWalletWithTxIDs(keychain *secp256k1fx.Keychain, nodeURI tmpnet.NodeURI, txIDs ...ids.ID) primary.Wallet {
 	tests.Outf("{{blue}} initializing a new wallet for node %s with URI: %s {{/}}\n", nodeURI.NodeID, nodeURI.URI)
 	baseWallet, err := primary.MakeWallet(DefaultContext(), &primary.WalletConfig{
 		URI:              nodeURI.URI,
@@ -258,7 +259,7 @@ func StartLocalNetwork(avalancheGoExecPath string, networkDir string) *local.Loc
 	return network
 }
 
-func RegisterNodeforCleanup(node testnet.Node) {
+func RegisterNodeforCleanup(node tmpnet.Node) {
 	ginkgo.DeferCleanup(func() {
 		tests.Outf("shutting down ephemeral node %q\n", node.GetID())
 		ctx, cancel := context.WithTimeout(context.Background(), DefaultTimeout)

@@ -452,7 +452,7 @@ func (ln *LocalNetwork) GetURIs() []tmpnet.NodeURI {
 // Stop all nodes in the network.
 func (ln *LocalNetwork) Stop() error {
 	// Assume the nodes are loaded and the pids are current
-	allNodes := []testnet.Node{}
+	allNodes := []tmpnet.Node{}
 	for _, node := range ln.Nodes {
 		allNodes = append(allNodes, node)
 	}
