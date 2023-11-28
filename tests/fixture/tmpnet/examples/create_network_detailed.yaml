@@ -1,32 +1,21 @@
-# Detailed specification of the fields of the CreateNetwork type
-# Detailed specification of the fields of the CreateNetwork type
-type: CreateNetwork
-version: 0.1.0
+type: NetworkGenerator
 # Declarative configuration for a new network. There is not a direct correlation
 # between this structure and the configuration of a running network due to
 # opportunistic data normalization.
 spec:
-  # Number of funded keys that should be created
+  # Number of pre-funded keys that should be created
   preFundedKeyCount: 5
-  genesis: "<primary network genesis content>"
   # Non-default flags configured for the primary chains. Custom chain
   # configuration should be specified in subnet declarations.
   chainConfigs:
     - name: C
       flags:
         - "log-level": trace
-  # Sets of node flags that can be applied to node types via the `flagSet` field
-  flagSets:
-      # The name that can be used in a nodeConfig.flag
-    - name: default
-      # Any node flag can be specified here.
-      flags:
-        - "api-admin-enabled": true
-        - "plugin-dir": /path/to/plugins
-    - name: custom_plugin_dir
-      flags:
-        - "plugin-dir": /other/path/to/plugins
+  flags:
+    - "api-admin-enabled": true
+    - "plugin-dir": /path/to/plugins
   nodeTypes:
+    # At least one node type must be defined
     - name: local
       # A field defining type-specific configuration. A field like this
       # will exist for each available type of node (e.g. localNodeConfig
@@ -36,57 +25,37 @@ spec:
         # Enables starting a node as a local process
         avalanchegoPath: /path/to/avalanchego
   # Configurations of nodes that can be instantiated. At least one must exist.
-  initialStakerSpecs:
-      # The name that a node set will reference
-    - nodeType: local
-      # Can reference one or more valid flagsets. Flagsets are applied in order of precedence. If empty, the first
-      # available flagset will be chosen.
-      flagSets:
-        - default
-    - name: local_other
-      # No flagSet being specified means the default (first) flagset will be used.
-      # Flags specified here take precendence over flags specified by a referenced flag set.
-      flags:
-        plugin-dir: /other/path/to/plugins
-      localNodeConfig:
-        avalanchegoPath: /path/to/other_avalanchego
-    - name: kube
-      nodeType: kube
-      # No non-default flags specified (both flagSet and flags fields not specified)
-      kubeNodeConfig:
-        # Example fields only, not reflective of what would actually be
-        # necessary to configure nodes intended to run as kubernetes
-        # pods
-        kubeconfigPath: /path/to/kubeconfig
-        configName: default
-  # Specs for the nodes that will validate the primary network
   initialStakerSets:
-      # The name that will be used to associate an instantiated node
-      # with the initial staker spec that resulted in its creation.
+      # The name of the set can be used by subnets to refer to a set
+      # of nodes to add as subnet validators.
     - name: local
-      # If not provided, nodeSpec will default to the name of the initial staker set
-      nodeSpec: local
-      # The number of nodes to instantiate. Defaults to 1. Must be greater than zero.
-      count: 1
-    # A single kube node
-    - nodeSpec: kube
-      count: 1
-    # 5 other local nodes
-    - name: local_other
-      count: 5
-  # Defines subnets to create
+      # If nodeType is not specified, the first one will be used
+      nodeType: local
+      replicas: 5
+      # Flags specified here take precendence over the network's default flags
+      flags:
+        - "plugin-dir": /other/path/to/plugins
+  # Subnets is an optional field. The same configuration can be used
+  # to add a subnet to an existing network.
   subnets:
-      # Name of the subnet will be used to associate status (i.e. subnet and blockchain IDs) with this configuration
+      # Name of the subnet will be used to associate status
+      # (i.e. subnet and blockchain IDs) with this configuration
     - name: subnet1
-      # Key on the primary network that created/owns the subnet. Must have sufficient funds to create the subnet.
-      # If not provided, a key will be assigned from the set of available pre-funded keys.
+      # Key on the primary network that created/owns the subnet. Must
+      # have sufficient funds to create the subnet.  If not provided,
+      # a key will be assigned from the set of available pre-funded
+      # keys.
       owningKey: PrivateKey-9EZqwJCTDLTDCSpPa4UvegMeXKgtiDqxuuwx7o8A6kQH6JSBX
       # Optional configuration that should be written for the subnet
       subnetConfig: "{\"mykey\": \"myval\"}"
-      # When creating a network one of initialStakerSet, nodeSpecs or  must be provided.
-      initialStakerSets:
-        -
-
+      validators:
+        # One of of stakerTag or nodeGenerator must be specified
+        - stakerSet: local
+        - nodeGenerator:
+            nodeType: local
+            replicas: 5
+            flags:
+              - "plugin-dir": /yet/another/path/to/plugins
       # Optional set of blockchains that should be created on the
       # subnet. Not mandatory - blockchains can be created subsequent to
       # network instantiation.
@@ -99,42 +68,3 @@ spec:
           genesis: e2e
           # Configuration for the blockchain. Will vary by type of VM.
           chainConfig: "{\"mykey\": \"myval\"}"
-    - name: subnet2
-      # owningKey will be assigned
-      blockchains:
-        - vmName: timestampvm
-          genesis: e2e
-status:
-  # The results of network instantiation. Not maintained after instantiation.
-  preFundedKeys:
-    - "PrivateKey-9EZqwJCTDLTDCSpPa4UvegMeXKgtiDqxuuwx7o8A6kQH6JSBX"
-    - "PrivateKey-2KFbuiSm49Tj5R8iDEkFRV3PxBRH5RRdxfoBNWTbNA8jJxuaqQ"
-    - "PrivateKey-23nmhT6SVwHJVo5ACe4v4ocWiV7RPP665QZ4aefw3BV4CYz9W9"
-    - "PrivateKey-2sr3A4KGWdYnQys2dniuf8Wru88HCi69upfdvXf1vh74FFznoA"
-    - "PrivateKey-UtKP7WJfEWGf4fZwv13abqELo5yHz9DxPVGN9yCwgXbS8i6w8"
-  initialStakersSets:
-    - name: local
-      nodeIDs:
-        - "NodeID-Bfc2pN3FSXNoaEUiDpSfYiQagFafEDxx6"
-    - name: kube
-      nodeIDs:
-        - "NodeID-LwmrQ576puNyezY479DpJdbHuSxdRrGRb"
-    - name: local_other
-      nodeIDs:
-        - "NodeID-2bo4NSBT76kds4uU7ohP4Erdc6kWXLtiU"
-        - "NodeID-3qVj3T7XCwcnF9U8JsAiGpo1Vz7VnRMfg"
-        - "NodeID-5z8TycMnUFnMxPz8ggGM9kdLHJs9fo3hC"
-        - "NodeID-Fwucnj6t3kDuJdeVWRMw3Pkh8QqGykqnq"
-  subnets:
-    - name: subnet1
-      # The ID of the created subnet
-      subnetID: 0x392d5abdc
-      blockchains:
-        vmName: xsvm
-        # The ID of the blockchain created for the xsvm vm in this subnet
-        id: 0x7f10540
-    - name: subnet2
-      subnetID: 0xf38dc62f5
-      blockchains:
-        vmName: xsvm
-        id: 0xed79b0e63
