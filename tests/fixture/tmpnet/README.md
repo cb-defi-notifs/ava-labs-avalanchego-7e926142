@@ -151,7 +151,7 @@ HOME
             ├── NodeID-37E8UK3x2YFsHE3RdALmfWcppcZ1eTuj9 // The ID of a node is the name of its data dir
             │   ├── chainData
             │   │   └── ...
-            │   ├── config.json                          // Node flags
+            │   ├── flags.json                           // Flags to configure the node with
             │   ├── db
             │   │   └── ...
             │   ├── logs
@@ -164,12 +164,10 @@ HOME
             │   └── C
             │       └── config.json                      // C-Chain config for all nodes
             ├── genesis.json                             // Genesis for all nodes
-            ├── network.json                             // Common configuration
             ├── network.env                              // Sets network dir env to simplify use of network
-            ├── prefunded.json                           // The set of pre-funded keys defined for the network
-            ├── subnet-a.json                            // Configuration for subnet-a
-            └── subnet-b.json                            // Configuration for subnet-b
-
+            ├── network.json                             // Common configuration (including pre-funded keys)
+            ├── subnet-a.json                            // Specification for subnet-a
+            └── subnet-b.json                            // Specification for subnet-b
 
 ```
 

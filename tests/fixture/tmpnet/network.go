@@ -47,35 +47,6 @@ var (
 	errMissingBootstrapNodes = errors.New("failed to add node due to missing bootstrap nodes")
 )
 
-// A set of flags appropriate for local testing.
-func LocalFlags() FlagsMap {
-	// Supply only non-default configuration to ensure that default values will be used.
-	return FlagsMap{
-		config.NetworkPeerListGossipFreqKey: "250ms",
-		config.NetworkMaxReconnectDelayKey:  "1s",
-		config.PublicIPKey:                  "127.0.0.1",
-		config.HTTPHostKey:                  "127.0.0.1",
-		config.StakingHostKey:               "127.0.0.1",
-		config.HealthCheckFreqKey:           "2s",
-		config.AdminAPIEnabledKey:           true,
-		config.IpcAPIEnabledKey:             true,
-		config.IndexEnabledKey:              true,
-		config.LogDisplayLevelKey:           "INFO",
-		config.LogLevelKey:                  "DEBUG",
-		config.MinStakeDurationKey:          DefaultMinStakeDuration.String(),
-	}
-}
-
-// C-Chain config for local testing.
-func LocalCChainConfig() FlagsMap {
-	// Supply only non-default configuration to ensure that default
-	// values will be used. Available C-Chain configuration options are
-	// defined in the `github.com/ava-labs/coreth/evm` package.
-	return FlagsMap{
-		"log-level": "trace",
-	}
-}
-
 // Default root dir for storing networks and their configuration.
 func GetDefaultRootDir() (string, error) {
 	homeDir, err := os.UserHomeDir()
@@ -113,6 +84,29 @@ func FindNextNetworkID(rootDir string) (uint32, string, error) {
 		// Directory already exists, keep iterating
 		networkID++
 	}
+}
+
+type Node struct {
+	NodeID ids.NodeID
+	Flags  FlagsMap
+
+	SpecName string
+	NodeType string
+}
+
+
+type Network struct {
+	Genesis      *genesis.UnparsedConfig
+	ChainConfigs map[string]FlagsMap
+	DefaultFlags FlagsMap
+	FundedKeys   []*secp256k1.PrivateKey
+
+	// Nodes with local configuration
+	Nodes []*LocalNode
+
+	// Path where network configuration will be stored
+	Dir string
+
 }
 
 // Defines the configuration required for a local network (i.e. one composed of local processes).
@@ -168,6 +162,111 @@ func (ln *LocalNetwork) AddEphemeralNode(ctx context.Context, w io.Writer, flags
 			Flags: flags,
 		},
 	}, true /* isEphemeral */)
+}
+
+func CreateNetwork(rootDir string, spec *NetworkSpec) (*LocalNetwork, error) {
+	if len(rootDir) == 0 {
+		// Use the default root dir
+		var err error
+		rootDir, err = GetDefaultRootDir()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Ensure creation of the root dir
+	if err := os.MkdirAll(rootDir, perms.ReadWriteExecute); err != nil {
+		return nil, fmt.Errorf("failed to create root network dir: %w", err)
+	}
+
+	// Find the next available network ID based on the contents of the root dir
+	networkID, networkDir, err := FindNextNetworkID(rootDir)
+	if err != nil {
+		return nil, err
+	}
+
+	network := &LocalNetwork
+
+	if nodeCount > 0 {
+		// Add the specified number of nodes
+		nodes := make([]*LocalNode, 0, nodeCount)
+		for i := 0; i < nodeCount; i++ {
+			nodes = append(nodes, NewLocalNode(""))
+		}
+		ln.Nodes = nodes
+	}
+
+	// Ensure each node has keys and an associated node ID. This
+	// ensures the availability of node IDs and proofs of possession
+	// for genesis generation.
+	for _, node := range ln.Nodes {
+		if err := node.EnsureKeys(); err != nil {
+			return err
+		}
+	}
+
+	// Assume all the initial nodes are stakers
+	initialStakers, err := stakersForNodes(networkID, ln.Nodes)
+	if err != nil {
+		return err
+	}
+
+	if keyCount > 0 {
+		// Ensure there are keys for genesis generation to fund
+		keys := make([]*secp256k1.PrivateKey, 0, keyCount)
+		for i := 0; i < keyCount; i++ {
+			key, err := secp256k1.NewPrivateKey()
+			if err != nil {
+				return fmt.Errorf("failed to generate private key: %w", err)
+			}
+			keys = append(keys, key)
+		}
+		ln.FundedKeys = keys
+	}
+
+	if err := ln.EnsureGenesis(networkID, initialStakers); err != nil {
+		return err
+	}
+
+	if _, ok := ln.ChainConfigs["C"]; !ok {
+		if ln.ChainConfigs == nil {
+			ln.ChainConfigs = map[string]FlagsMap{}
+		}
+		ln.ChainConfigs["C"] = LocalCChainConfig()
+	}
+
+	// Default flags need to be set in advance of node config
+	// population to ensure correct node configuration.
+	if ln.DefaultFlags == nil {
+		ln.DefaultFlags = LocalFlags()
+	}
+
+	for _, node := range ln.Nodes {
+		// Ensure the node is configured for use with the network and
+		// knows where to write its configuration.
+		if err := ln.PopulateNodeConfig(node, ln.Dir); err != nil {
+			return err
+		}
+	}
+
+	return nil
+
+
+
+
+}
+
+	// Setting the network dir before populating config ensures the
+	// nodes know where to write their configuration.
+	network.Dir = networkDir
+
+	if err := network.PopulateLocalNetworkConfig(networkID, nodeCount, keyCount); err != nil {
+		return nil, err
+	}
+
+	if err := network.WriteAll(); err != nil {
+		return nil, err
+	}
 }
 
 // Starts a new network stored under the provided root dir. Required

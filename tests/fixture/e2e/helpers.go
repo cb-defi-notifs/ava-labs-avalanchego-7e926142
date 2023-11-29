@@ -232,26 +232,19 @@ func CheckBootstrapIsPossible(network tmpnet.Network) {
 }
 
 // Start a local test-managed network with the provided avalanchego binary.
-func StartLocalNetwork(avalancheGoExecPath string, networkDir string) *tmpnet.LocalNetwork {
+func StartLocalNetwork(avalancheGoExecPath string, networkDir string) *tmpnet.TemporaryNetwork {
 	require := require.New(ginkgo.GinkgoT())
 
-	network, err := tmpnet.StartNetwork(
-		DefaultContext(),
-		ginkgo.GinkgoWriter,
-		networkDir,
-		&tmpnet.LocalNetwork{
-			LocalConfig: tmpnet.LocalConfig{
-				ExecPath: avalancheGoExecPath,
-			},
-		},
-		tmpnet.DefaultNodeCount,
-		tmpnet.DefaultFundedKeyCount,
-	)
+	network, err := tmpnet.NewDefaultNetwork(networkDir, tmpnet.DefaultNodeCount, avalancheGoExecPath)
 	require.NoError(err)
+
 	ginkgo.DeferCleanup(func() {
 		tests.Outf("Shutting down network\n")
 		require.NoError(network.Stop())
 	})
+
+	err := network.Start(DefaultContext(), ginkgo.GinkgoWriter)
+	require.NoError(err)
 
 	tests.Outf("{{green}}Successfully started network{{/}}\n")
 
