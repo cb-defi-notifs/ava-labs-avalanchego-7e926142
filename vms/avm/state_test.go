@@ -1,10 +1,9 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package avm
 
 import (
-	"context"
 	"math"
 	"testing"
 
@@ -12,6 +11,7 @@ import (
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/snow/engine/common"
+	"github.com/ava-labs/avalanchego/upgrade/upgradetest"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/utils/units"
@@ -24,6 +24,7 @@ func TestSetsAndGets(t *testing.T) {
 	require := require.New(t)
 
 	env := setup(t, &envConfig{
+		fork: upgradetest.Latest,
 		additionalFxs: []*common.Fx{{
 			ID: ids.GenerateTestID(),
 			Fx: &FxTest{
@@ -34,10 +35,7 @@ func TestSetsAndGets(t *testing.T) {
 			},
 		}},
 	})
-	defer func() {
-		require.NoError(env.vm.Shutdown(context.Background()))
-		env.vm.ctx.Lock.Unlock()
-	}()
+	defer env.vm.ctx.Lock.Unlock()
 
 	utxo := &avax.UTXO{
 		UTXOID: avax.UTXOID{
@@ -51,7 +49,7 @@ func TestSetsAndGets(t *testing.T) {
 
 	tx := &txs.Tx{Unsigned: &txs.BaseTx{BaseTx: avax.BaseTx{
 		NetworkID:    constants.UnitTestID,
-		BlockchainID: chainID,
+		BlockchainID: env.vm.ctx.XChainID,
 		Ins: []*avax.TransferableInput{{
 			UTXOID: avax.UTXOID{
 				TxID:        ids.Empty,
@@ -86,6 +84,7 @@ func TestSetsAndGets(t *testing.T) {
 
 func TestFundingNoAddresses(t *testing.T) {
 	env := setup(t, &envConfig{
+		fork: upgradetest.Latest,
 		additionalFxs: []*common.Fx{{
 			ID: ids.GenerateTestID(),
 			Fx: &FxTest{
@@ -96,10 +95,7 @@ func TestFundingNoAddresses(t *testing.T) {
 			},
 		}},
 	})
-	defer func() {
-		require.NoError(t, env.vm.Shutdown(context.Background()))
-		env.vm.ctx.Lock.Unlock()
-	}()
+	defer env.vm.ctx.Lock.Unlock()
 
 	utxo := &avax.UTXO{
 		UTXOID: avax.UTXOID{
@@ -118,6 +114,7 @@ func TestFundingAddresses(t *testing.T) {
 	require := require.New(t)
 
 	env := setup(t, &envConfig{
+		fork: upgradetest.Latest,
 		additionalFxs: []*common.Fx{{
 			ID: ids.GenerateTestID(),
 			Fx: &FxTest{
@@ -128,10 +125,7 @@ func TestFundingAddresses(t *testing.T) {
 			},
 		}},
 	})
-	defer func() {
-		require.NoError(env.vm.Shutdown(context.Background()))
-		env.vm.ctx.Lock.Unlock()
-	}()
+	defer env.vm.ctx.Lock.Unlock()
 
 	utxo := &avax.UTXO{
 		UTXOID: avax.UTXOID{

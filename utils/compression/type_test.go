@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package compression
@@ -12,7 +12,7 @@ import (
 func TestTypeString(t *testing.T) {
 	require := require.New(t)
 
-	for _, compressionType := range []Type{TypeNone, TypeGzip, TypeZstd} {
+	for _, compressionType := range []Type{TypeNone, TypeZstd} {
 		s := compressionType.String()
 		parsedType, err := TypeFromString(s)
 		require.NoError(err)
@@ -33,10 +33,6 @@ func TestTypeMarshalJSON(t *testing.T) {
 		{
 			Type:     TypeNone,
 			expected: `"none"`,
-		},
-		{
-			Type:     TypeGzip,
-			expected: `"gzip"`,
 		},
 		{
 			Type:     TypeZstd,

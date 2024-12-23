@@ -18,7 +18,7 @@ Avalanche is a network composed of multiple sub-networks (called [subnets][Subne
 
 ## Introduction
 
-Just as [Coreth] powers the [C-Chain], XSVM can be used to power its own blockchain in an Avalanche [Subnet]. Instead of providing a place to execute Solidity smart contracts, however, XSVM enables asset transfers for assets originating on it's own chain or other XSVM chains on other subnets.
+Just as [Coreth] powers the [C-Chain], XSVM can be used to power its own blockchain in an Avalanche [Subnet]. Instead of providing a place to execute Solidity smart contracts, however, XSVM enables asset transfers for assets originating on its own chain or other XSVM chains on other subnets.
 
 ## How it Works
 
@@ -66,6 +66,7 @@ Available Commands:
   help        Help about any command
   issue       Issues transactions
   version     Prints out the version
+  versionjson Prints out the version in json format
 
 Flags:
   -h, --help   help for xsvm

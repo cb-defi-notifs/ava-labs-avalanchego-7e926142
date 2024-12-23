@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package executor
@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/stretchr/testify/require"
 
 	"github.com/ava-labs/avalanchego/database"
@@ -37,7 +36,9 @@ func TestBaseTxExecutor(t *testing.T) {
 	require := require.New(t)
 
 	secpFx := &secp256k1fx.Fx{}
-	parser, err := block.NewParser([]fxs.Fx{secpFx})
+	parser, err := block.NewParser(
+		[]fxs.Fx{secpFx},
+	)
 	require.NoError(err)
 	codec := parser.Codec()
 
@@ -142,7 +143,9 @@ func TestCreateAssetTxExecutor(t *testing.T) {
 	require := require.New(t)
 
 	secpFx := &secp256k1fx.Fx{}
-	parser, err := block.NewParser([]fxs.Fx{secpFx})
+	parser, err := block.NewParser(
+		[]fxs.Fx{secpFx},
+	)
 	require.NoError(err)
 	codec := parser.Codec()
 
@@ -285,7 +288,9 @@ func TestOperationTxExecutor(t *testing.T) {
 	require := require.New(t)
 
 	secpFx := &secp256k1fx.Fx{}
-	parser, err := block.NewParser([]fxs.Fx{secpFx})
+	parser, err := block.NewParser(
+		[]fxs.Fx{secpFx},
+	)
 	require.NoError(err)
 	codec := parser.Codec()
 

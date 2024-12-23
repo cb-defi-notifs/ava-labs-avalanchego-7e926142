@@ -1,15 +1,18 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package avm
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/ava-labs/avalanchego/api"
+	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/upgrade/upgradetest"
+	"github.com/ava-labs/avalanchego/utils/linked"
+	"github.com/ava-labs/avalanchego/vms/avm/txs"
 )
 
 func TestWalletService_SendMultiple(t *testing.T) {
@@ -18,6 +21,7 @@ func TestWalletService_SendMultiple(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			env := setup(t, &envConfig{
+				fork:             upgradetest.Latest,
 				isCustomFeeAsset: !tc.avaxAsset,
 				keystoreUsers: []*user{{
 					username:    username,
@@ -27,10 +31,10 @@ func TestWalletService_SendMultiple(t *testing.T) {
 			})
 			env.vm.ctx.Lock.Unlock()
 
-			defer func() {
-				require.NoError(env.vm.Shutdown(context.Background()))
-				env.vm.ctx.Lock.Unlock()
-			}()
+			walletService := &WalletService{
+				vm:         env.vm,
+				pendingTxs: linked.NewHashmap[ids.ID, *txs.Tx](),
+			}
 
 			assetID := env.genesisTx.ID()
 			addr := keys[0].PublicKey().Address()
@@ -39,7 +43,7 @@ func TestWalletService_SendMultiple(t *testing.T) {
 			require.NoError(err)
 			changeAddrStr, err := env.vm.FormatLocalAddress(testChangeAddr)
 			require.NoError(err)
-			_, fromAddrsStr := sampleAddrs(t, env.vm, addrs)
+			_, fromAddrsStr := sampleAddrs(t, env.vm.AddressManager, addrs)
 
 			args := &SendMultipleArgs{
 				JSONSpendHeader: api.JSONSpendHeader{
@@ -64,14 +68,14 @@ func TestWalletService_SendMultiple(t *testing.T) {
 				},
 			}
 			reply := &api.JSONTxIDChangeAddr{}
-			require.NoError(env.walletService.SendMultiple(nil, args, reply))
+			require.NoError(walletService.SendMultiple(nil, args, reply))
 			require.Equal(changeAddrStr, reply.ChangeAddr)
-
-			env.vm.ctx.Lock.Lock()
 
 			buildAndAccept(require, env.vm, env.issuer, reply.TxID)
 
+			env.vm.ctx.Lock.Lock()
 			_, err = env.vm.state.GetTx(reply.TxID)
+			env.vm.ctx.Lock.Unlock()
 			require.NoError(err)
 		})
 	}

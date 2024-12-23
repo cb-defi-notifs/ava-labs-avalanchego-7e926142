@@ -1,17 +1,14 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package merkledb
 
 import (
-	"golang.org/x/exp/slices"
+	"slices"
 
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/utils/hashing"
 	"github.com/ava-labs/avalanchego/utils/maybe"
 )
-
-const HashLength = 32
 
 // Representation of a node stored in the database.
 type dbNode struct {
@@ -29,7 +26,6 @@ type child struct {
 type node struct {
 	dbNode
 	key         Key
-	nodeBytes   []byte
 	valueDigest maybe.Maybe[[]byte]
 }
 
@@ -44,18 +40,17 @@ func newNode(key Key) *node {
 }
 
 // Parse [nodeBytes] to a node and set its key to [key].
-func parseNode(key Key, nodeBytes []byte) (*node, error) {
+func parseNode(hasher Hasher, key Key, nodeBytes []byte) (*node, error) {
 	n := dbNode{}
-	if err := codec.decodeDBNode(nodeBytes, &n); err != nil {
+	if err := decodeDBNode(nodeBytes, &n); err != nil {
 		return nil, err
 	}
 	result := &node{
-		dbNode:    n,
-		key:       key,
-		nodeBytes: nodeBytes,
+		dbNode: n,
+		key:    key,
 	}
 
-	result.setValueDigest()
+	result.setValueDigest(hasher)
 	return result, nil
 }
 
@@ -66,38 +61,21 @@ func (n *node) hasValue() bool {
 
 // Returns the byte representation of this node.
 func (n *node) bytes() []byte {
-	if n.nodeBytes == nil {
-		n.nodeBytes = codec.encodeDBNode(&n.dbNode)
-	}
-
-	return n.nodeBytes
-}
-
-// clear the cached values that will need to be recalculated whenever the node changes
-// for example, node ID and byte representation
-func (n *node) onNodeChanged() {
-	n.nodeBytes = nil
-}
-
-// Returns and caches the ID of this node.
-func (n *node) calculateID(metrics merkleMetrics) ids.ID {
-	metrics.HashCalculated()
-	bytes := codec.encodeHashValues(n)
-	return hashing.ComputeHash256Array(bytes)
+	return encodeDBNode(&n.dbNode)
 }
 
 // Set [n]'s value to [val].
-func (n *node) setValue(val maybe.Maybe[[]byte]) {
-	n.onNodeChanged()
+func (n *node) setValue(hasher Hasher, val maybe.Maybe[[]byte]) {
 	n.value = val
-	n.setValueDigest()
+	n.setValueDigest(hasher)
 }
 
-func (n *node) setValueDigest() {
+func (n *node) setValueDigest(hasher Hasher) {
 	if n.value.IsNothing() || len(n.value.Value()) < HashLength {
 		n.valueDigest = n.value
 	} else {
-		n.valueDigest = maybe.Some(hashing.ComputeHash256(n.value.Value()))
+		hash := hasher.HashValue(n.value.Value())
+		n.valueDigest = maybe.Some(hash[:])
 	}
 }
 
@@ -105,10 +83,15 @@ func (n *node) setValueDigest() {
 // Assumes [child]'s key is valid as a child of [n].
 // That is, [n.key] is a prefix of [child.key].
 func (n *node) addChild(childNode *node, tokenSize int) {
+	n.addChildWithID(childNode, tokenSize, ids.Empty)
+}
+
+func (n *node) addChildWithID(childNode *node, tokenSize int, childID ids.ID) {
 	n.setChildEntry(
 		childNode.key.Token(n.key.length, tokenSize),
 		&child{
 			compressedKey: childNode.key.Skip(n.key.length + tokenSize),
+			id:            childID,
 			hasValue:      childNode.hasValue(),
 		},
 	)
@@ -116,13 +99,11 @@ func (n *node) addChild(childNode *node, tokenSize int) {
 
 // Adds a child to [n] without a reference to the child node.
 func (n *node) setChildEntry(index byte, childEntry *child) {
-	n.onNodeChanged()
 	n.children[index] = childEntry
 }
 
 // Removes [child] from [n]'s children.
 func (n *node) removeChild(child *node, tokenSize int) {
-	n.onNodeChanged()
 	delete(n.children, child.key.Token(n.key.length, tokenSize))
 }
 
@@ -138,7 +119,6 @@ func (n *node) clone() *node {
 			children: make(map[byte]*child, len(n.children)),
 		},
 		valueDigest: n.valueDigest,
-		nodeBytes:   n.nodeBytes,
 	}
 	for key, existing := range n.children {
 		result.children[key] = &child{

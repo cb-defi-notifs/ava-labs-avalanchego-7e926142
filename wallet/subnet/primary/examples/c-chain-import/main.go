@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package main
@@ -31,23 +31,26 @@ func main() {
 	// MakeWallet fetches the available UTXOs owned by [kc] on the network that
 	// [uri] is hosting.
 	walletSyncStartTime := time.Now()
-	wallet, err := primary.MakeWallet(ctx, &primary.WalletConfig{
-		URI:          uri,
-		AVAXKeychain: kc,
-		EthKeychain:  kc,
-	})
+	wallet, err := primary.MakeWallet(
+		ctx,
+		uri,
+		kc,
+		kc,
+		primary.WalletConfig{},
+	)
 	if err != nil {
 		log.Fatalf("failed to initialize wallet: %s\n", err)
 	}
 	log.Printf("synced wallet in %s\n", time.Since(walletSyncStartTime))
 
-	// Get the P-chain wallet
+	// Get the chain wallets
 	pWallet := wallet.P()
 	cWallet := wallet.C()
 
 	// Pull out useful constants to use when issuing transactions.
-	cChainID := cWallet.BlockchainID()
-	avaxAssetID := cWallet.AVAXAssetID()
+	cContext := cWallet.Builder().Context()
+	cChainID := cContext.BlockchainID
+	avaxAssetID := cContext.AVAXAssetID
 	owner := secp256k1fx.OutputOwners{
 		Threshold: 1,
 		Addrs: []ids.ShortID{

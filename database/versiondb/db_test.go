@@ -1,34 +1,38 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package versiondb
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/ava-labs/avalanchego/database"
+	"github.com/ava-labs/avalanchego/database/dbtest"
 	"github.com/ava-labs/avalanchego/database/memdb"
 )
 
 func TestInterface(t *testing.T) {
-	for _, test := range database.Tests {
-		baseDB := memdb.New()
-		test(t, New(baseDB))
+	for name, test := range dbtest.Tests {
+		t.Run(name, func(t *testing.T) {
+			baseDB := memdb.New()
+			test(t, New(baseDB))
+		})
 	}
 }
 
 func FuzzKeyValue(f *testing.F) {
-	database.FuzzKeyValue(f, New(memdb.New()))
+	dbtest.FuzzKeyValue(f, New(memdb.New()))
 }
 
 func FuzzNewIteratorWithPrefix(f *testing.F) {
-	database.FuzzNewIteratorWithPrefix(f, New(memdb.New()))
+	dbtest.FuzzNewIteratorWithPrefix(f, New(memdb.New()))
 }
 
 func FuzzNewIteratorWithStartAndPrefix(f *testing.F) {
-	database.FuzzNewIteratorWithStartAndPrefix(f, New(memdb.New()))
+	dbtest.FuzzNewIteratorWithStartAndPrefix(f, New(memdb.New()))
 }
 
 func TestIterate(t *testing.T) {
@@ -297,13 +301,15 @@ func TestSetDatabaseClosed(t *testing.T) {
 }
 
 func BenchmarkInterface(b *testing.B) {
-	for _, size := range database.BenchmarkSizes {
-		keys, values := database.SetupBenchmark(b, size[0], size[1], size[2])
-		for _, bench := range database.Benchmarks {
-			baseDB := memdb.New()
-			db := New(baseDB)
-			bench(b, db, "versiondb", keys, values)
-			_ = db.Close()
+	for _, size := range dbtest.BenchmarkSizes {
+		keys, values := dbtest.SetupBenchmark(b, size[0], size[1], size[2])
+		for name, bench := range dbtest.Benchmarks {
+			b.Run(fmt.Sprintf("versiondb_%d_pairs_%d_keys_%d_values_%s", size[0], size[1], size[2], name), func(b *testing.B) {
+				baseDB := memdb.New()
+				db := New(baseDB)
+				bench(b, db, keys, values)
+				_ = db.Close()
+			})
 		}
 	}
 }

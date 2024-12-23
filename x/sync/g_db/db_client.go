@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package gdb
@@ -32,7 +32,7 @@ type DBClient struct {
 func (c *DBClient) GetMerkleRoot(ctx context.Context) (ids.ID, error) {
 	resp, err := c.client.GetMerkleRoot(ctx, &emptypb.Empty{})
 	if err != nil {
-		return ids.ID{}, err
+		return ids.Empty, err
 	}
 	return ids.ToID(resp.RootHash)
 }
@@ -45,6 +45,10 @@ func (c *DBClient) GetChangeProof(
 	endKey maybe.Maybe[[]byte],
 	keyLimit int,
 ) (*merkledb.ChangeProof, error) {
+	if endRootID == ids.Empty {
+		return nil, merkledb.ErrEmptyProof
+	}
+
 	resp, err := c.client.GetChangeProof(ctx, &pb.GetChangeProofRequest{
 		StartRootHash: startRootID[:],
 		EndRootHash:   endRootID[:],
@@ -63,6 +67,9 @@ func (c *DBClient) GetChangeProof(
 	}
 
 	// TODO handle merkledb.ErrInvalidMaxLength
+	// TODO disambiguate between the root not being present due to
+	// the end root not being present and the start root not being
+	// present before the end root. i.e. ErrNoEndRoot vs ErrInsufficientHistory.
 	if resp.GetRootNotPresent() {
 		return nil, merkledb.ErrInsufficientHistory
 	}
@@ -133,6 +140,10 @@ func (c *DBClient) GetRangeProofAtRoot(
 	endKey maybe.Maybe[[]byte],
 	keyLimit int,
 ) (*merkledb.RangeProof, error) {
+	if rootID == ids.Empty {
+		return nil, merkledb.ErrEmptyProof
+	}
+
 	resp, err := c.client.GetRangeProof(ctx, &pb.GetRangeProofRequest{
 		RootHash: rootID[:],
 		StartKey: &pb.MaybeBytes{

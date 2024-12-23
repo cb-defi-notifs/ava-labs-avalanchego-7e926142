@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package bls
@@ -33,15 +33,15 @@ func TestSecretKeyBytes(t *testing.T) {
 
 	msg := utils.RandomBytes(1234)
 
-	sk, err := NewSecretKey()
+	sk, err := NewSigner()
 	require.NoError(err)
-	sig := Sign(sk, msg)
-	skBytes := SecretKeyToBytes(sk)
+	sig := sk.Sign(msg)
+	skBytes := sk.ToBytes()
 
 	sk2, err := SecretKeyFromBytes(skBytes)
 	require.NoError(err)
-	sig2 := Sign(sk2, msg)
-	sk2Bytes := SecretKeyToBytes(sk2)
+	sig2 := sk2.Sign(msg)
+	sk2Bytes := sk2.ToBytes()
 
 	require.Equal(sk, sk2)
 	require.Equal(skBytes, sk2Bytes)

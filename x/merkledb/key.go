@@ -1,16 +1,17 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package merkledb
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"unsafe"
 
 	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 )
 
 var (
@@ -47,6 +48,8 @@ const (
 	BranchFactor4   = BranchFactor(4)
 	BranchFactor16  = BranchFactor(16)
 	BranchFactor256 = BranchFactor(256)
+
+	BranchFactorLargest = BranchFactor256
 )
 
 // Valid checks if BranchFactor [b] is one of the predefined valid options for BranchFactor
@@ -164,12 +167,19 @@ func (k Key) Length() int {
 
 // Greater returns true if current Key is greater than other Key
 func (k Key) Greater(other Key) bool {
-	return k.value > other.value || (k.value == other.value && k.length > other.length)
+	return k.Compare(other) == 1
 }
 
 // Less will return true if current Key is less than other Key
 func (k Key) Less(other Key) bool {
-	return k.value < other.value || (k.value == other.value && k.length < other.length)
+	return k.Compare(other) == -1
+}
+
+func (k Key) Compare(other Key) int {
+	if valueCmp := cmp.Compare(k.value, other.value); valueCmp != 0 {
+		return valueCmp
+	}
+	return cmp.Compare(k.length, other.length)
 }
 
 // Extend returns a new Key that is the in-order aggregation of Key [k] with [keys]

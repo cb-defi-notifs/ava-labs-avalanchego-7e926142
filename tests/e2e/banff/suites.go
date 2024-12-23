@@ -1,16 +1,14 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 // Implements tests for the banff network upgrade.
 package banff
 
 import (
-	ginkgo "github.com/onsi/ginkgo/v2"
-
+	"github.com/onsi/ginkgo/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/tests"
 	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/units"
@@ -20,19 +18,23 @@ import (
 )
 
 var _ = ginkgo.Describe("[Banff]", func() {
-	require := require.New(ginkgo.GinkgoT())
+	tc := e2e.NewTestContext()
+	require := require.New(tc)
 
 	ginkgo.It("can send custom assets X->P and P->X",
 		func() {
-			keychain := e2e.Env.NewKeychain(1)
-			wallet := e2e.NewWallet(keychain, e2e.Env.GetRandomNodeURI())
+			env := e2e.GetEnv(tc)
+			keychain := env.NewKeychain()
+			wallet := e2e.NewWallet(tc, keychain, env.GetRandomNodeURI())
 
 			// Get the P-chain and the X-chain wallets
 			pWallet := wallet.P()
 			xWallet := wallet.X()
+			xBuilder := xWallet.Builder()
+			xContext := xBuilder.Context()
 
 			// Pull out useful constants to use when issuing transactions.
-			xChainID := xWallet.BlockchainID()
+			xChainID := xContext.BlockchainID
 			owner := &secp256k1fx.OutputOwners{
 				Threshold: 1,
 				Addrs: []ids.ShortID{
@@ -41,8 +43,8 @@ var _ = ginkgo.Describe("[Banff]", func() {
 			}
 
 			var assetID ids.ID
-			ginkgo.By("create new X-chain asset", func() {
-				assetTx, err := xWallet.IssueCreateAssetTx(
+			tc.By("create new X-chain asset", func() {
+				tx, err := xWallet.IssueCreateAssetTx(
 					"RnM",
 					"RNM",
 					9,
@@ -54,16 +56,14 @@ var _ = ginkgo.Describe("[Banff]", func() {
 							},
 						},
 					},
-					e2e.WithDefaultContext(),
+					tc.WithDefaultContext(),
 				)
 				require.NoError(err)
-				assetID = assetTx.ID()
-
-				tests.Outf("{{green}}created new X-chain asset{{/}}: %s\n", assetID)
+				assetID = tx.ID()
 			})
 
-			ginkgo.By("export new X-chain asset to P-chain", func() {
-				tx, err := xWallet.IssueExportTx(
+			tc.By("export new X-chain asset to P-chain", func() {
+				_, err := xWallet.IssueExportTx(
 					constants.PlatformChainID,
 					[]*avax.TransferableOutput{
 						{
@@ -76,26 +76,22 @@ var _ = ginkgo.Describe("[Banff]", func() {
 							},
 						},
 					},
-					e2e.WithDefaultContext(),
+					tc.WithDefaultContext(),
 				)
 				require.NoError(err)
-
-				tests.Outf("{{green}}issued X-chain export{{/}}: %s\n", tx.ID())
 			})
 
-			ginkgo.By("import new asset from X-chain on the P-chain", func() {
-				tx, err := pWallet.IssueImportTx(
+			tc.By("import new asset from X-chain on the P-chain", func() {
+				_, err := pWallet.IssueImportTx(
 					xChainID,
 					owner,
-					e2e.WithDefaultContext(),
+					tc.WithDefaultContext(),
 				)
 				require.NoError(err)
-
-				tests.Outf("{{green}}issued P-chain import{{/}}: %s\n", tx.ID())
 			})
 
-			ginkgo.By("export asset from P-chain to the X-chain", func() {
-				tx, err := pWallet.IssueExportTx(
+			tc.By("export asset from P-chain to the X-chain", func() {
+				_, err := pWallet.IssueExportTx(
 					xChainID,
 					[]*avax.TransferableOutput{
 						{
@@ -108,22 +104,20 @@ var _ = ginkgo.Describe("[Banff]", func() {
 							},
 						},
 					},
-					e2e.WithDefaultContext(),
+					tc.WithDefaultContext(),
 				)
 				require.NoError(err)
-
-				tests.Outf("{{green}}issued P-chain export{{/}}: %s\n", tx.ID())
 			})
 
-			ginkgo.By("import asset from P-chain on the X-chain", func() {
-				tx, err := xWallet.IssueImportTx(
+			tc.By("import asset from P-chain on the X-chain", func() {
+				_, err := xWallet.IssueImportTx(
 					constants.PlatformChainID,
 					owner,
-					e2e.WithDefaultContext(),
+					tc.WithDefaultContext(),
 				)
 				require.NoError(err)
-
-				tests.Outf("{{green}}issued X-chain import{{/}}: %s\n", tx.ID())
 			})
+
+			_ = e2e.CheckBootstrapIsPossible(tc, env.GetNetwork())
 		})
 })

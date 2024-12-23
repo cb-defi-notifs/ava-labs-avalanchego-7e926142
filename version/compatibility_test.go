@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package version
@@ -13,17 +13,20 @@ import (
 
 func TestCompatibility(t *testing.T) {
 	v := &Application{
+		Name:  Client,
 		Major: 1,
 		Minor: 4,
 		Patch: 3,
 	}
-	minCompatable := &Application{
+	minCompatible := &Application{
+		Name:  Client,
 		Major: 1,
 		Minor: 4,
 		Patch: 0,
 	}
-	minCompatableTime := time.Unix(9000, 0)
-	prevMinCompatable := &Application{
+	minCompatibleTime := time.Unix(9000, 0)
+	prevMinCompatible := &Application{
+		Name:  Client,
 		Major: 1,
 		Minor: 3,
 		Patch: 0,
@@ -31,9 +34,9 @@ func TestCompatibility(t *testing.T) {
 
 	compatibility := NewCompatibility(
 		v,
-		minCompatable,
-		minCompatableTime,
-		prevMinCompatable,
+		minCompatible,
+		minCompatibleTime,
+		prevMinCompatible,
 	).(*compatibility)
 	require.Equal(t, v, compatibility.Version())
 
@@ -44,14 +47,16 @@ func TestCompatibility(t *testing.T) {
 	}{
 		{
 			peer: &Application{
+				Name:  Client,
 				Major: 1,
 				Minor: 5,
 				Patch: 0,
 			},
-			time: minCompatableTime,
+			time: minCompatibleTime,
 		},
 		{
 			peer: &Application{
+				Name:  Client,
 				Major: 1,
 				Minor: 3,
 				Patch: 5,
@@ -60,24 +65,27 @@ func TestCompatibility(t *testing.T) {
 		},
 		{
 			peer: &Application{
+				Name:  Client,
 				Major: 0,
 				Minor: 1,
 				Patch: 0,
 			},
-			time:        minCompatableTime,
+			time:        minCompatibleTime,
 			expectedErr: errDifferentMajor,
 		},
 		{
 			peer: &Application{
+				Name:  Client,
 				Major: 1,
 				Minor: 3,
 				Patch: 5,
 			},
-			time:        minCompatableTime,
+			time:        minCompatibleTime,
 			expectedErr: errIncompatible,
 		},
 		{
 			peer: &Application{
+				Name:  Client,
 				Major: 1,
 				Minor: 2,
 				Patch: 5,
@@ -87,6 +95,7 @@ func TestCompatibility(t *testing.T) {
 		},
 		{
 			peer: &Application{
+				Name:  Client,
 				Major: 1,
 				Minor: 1,
 				Patch: 5,

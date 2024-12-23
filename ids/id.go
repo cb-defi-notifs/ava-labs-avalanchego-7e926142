@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package ids
@@ -46,12 +46,21 @@ func FromString(idStr string) (ID, error) {
 	return ToID(bytes)
 }
 
+// FromStringOrPanic is the same as FromString, but will panic on error
+func FromStringOrPanic(idStr string) ID {
+	id, err := FromString(idStr)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 func (id ID) MarshalJSON() ([]byte, error) {
 	str, err := cb58.Encode(id[:])
 	if err != nil {
 		return nil, err
 	}
-	return []byte("\"" + str + "\""), nil
+	return []byte(`"` + str + `"`), nil
 }
 
 func (id *ID) UnmarshalJSON(b []byte) error {
@@ -94,6 +103,25 @@ func (id ID) Prefix(prefixes ...uint64) ID {
 		packer.PackLong(prefix)
 	}
 	packer.PackFixedBytes(id[:])
+
+	return hashing.ComputeHash256Array(packer.Bytes)
+}
+
+// Append this id with the provided suffixes and re-hash the result. This
+// returns a new ID and does not modify the original ID.
+//
+// This is used to generate ACP-77 validationIDs.
+//
+// Ref: https://github.com/avalanche-foundation/ACPs/tree/e333b335c34c8692d84259d21bd07b2bb849dc2c/ACPs/77-reinventing-subnets#convertsubnettol1tx
+func (id ID) Append(suffixes ...uint32) ID {
+	packer := wrappers.Packer{
+		Bytes: make([]byte, IDLen+len(suffixes)*wrappers.IntLen),
+	}
+
+	packer.PackFixedBytes(id[:])
+	for _, suffix := range suffixes {
+		packer.PackInt(suffix)
+	}
 
 	return hashing.ComputeHash256Array(packer.Bytes)
 }
@@ -145,6 +173,6 @@ func (id ID) MarshalText() ([]byte, error) {
 	return []byte(id.String()), nil
 }
 
-func (id ID) Less(other ID) bool {
-	return bytes.Compare(id[:], other[:]) < 0
+func (id ID) Compare(other ID) int {
+	return bytes.Compare(id[:], other[:])
 }

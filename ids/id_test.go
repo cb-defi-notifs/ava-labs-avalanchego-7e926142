@@ -1,16 +1,19 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package ids
 
 import (
 	"encoding/json"
+	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/ava-labs/avalanchego/utils"
 	"github.com/ava-labs/avalanchego/utils/cb58"
+	"github.com/ava-labs/avalanchego/utils/hashing"
 )
 
 func TestID(t *testing.T) {
@@ -22,6 +25,90 @@ func TestID(t *testing.T) {
 
 	require.Equal(idCopy, id)
 	require.Equal(prefixed, id.Prefix(0))
+}
+
+func TestIDPrefix(t *testing.T) {
+	id := GenerateTestID()
+	tests := []struct {
+		name             string
+		id               ID
+		prefix           []uint64
+		expectedPreimage []byte
+	}{
+		{
+			name:             "empty prefix",
+			id:               id,
+			prefix:           []uint64{},
+			expectedPreimage: id[:],
+		},
+		{
+			name:   "1 prefix",
+			id:     id,
+			prefix: []uint64{1},
+			expectedPreimage: slices.Concat(
+				[]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01},
+				id[:],
+			),
+		},
+		{
+			name:   "multiple prefixes",
+			id:     id,
+			prefix: []uint64{1, 256},
+			expectedPreimage: slices.Concat(
+				[]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01},
+				[]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00},
+				id[:],
+			),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			expected := ID(hashing.ComputeHash256Array(test.expectedPreimage))
+			require.Equal(t, expected, test.id.Prefix(test.prefix...))
+		})
+	}
+}
+
+func TestIDAppend(t *testing.T) {
+	id := GenerateTestID()
+	tests := []struct {
+		name             string
+		id               ID
+		suffix           []uint32
+		expectedPreimage []byte
+	}{
+		{
+			name:             "empty suffix",
+			id:               id,
+			suffix:           []uint32{},
+			expectedPreimage: id[:],
+		},
+		{
+			name:   "1 suffix",
+			id:     id,
+			suffix: []uint32{1},
+			expectedPreimage: slices.Concat(
+				id[:],
+				[]byte{0x00, 0x00, 0x00, 0x01},
+			),
+		},
+		{
+			name:   "multiple suffixes",
+			id:     id,
+			suffix: []uint32{1, 256},
+			expectedPreimage: slices.Concat(
+				id[:],
+				[]byte{0x00, 0x00, 0x00, 0x01},
+				[]byte{0x00, 0x00, 0x01, 0x00},
+			),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			expected := ID(hashing.ComputeHash256Array(test.expectedPreimage))
+			require.Equal(t, expected, test.id.Append(test.suffix...))
+		})
+	}
 }
 
 func TestIDXOR(t *testing.T) {
@@ -101,11 +188,16 @@ func TestIDMarshalJSON(t *testing.T) {
 		out   []byte
 		err   error
 	}{
-		{"ID{}", ID{}, []byte("\"11111111111111111111111111111111LpoYY\""), nil},
 		{
-			"ID(\"ava labs\")",
+			"ID{}",
+			ID{},
+			[]byte(`"11111111111111111111111111111111LpoYY"`),
+			nil,
+		},
+		{
+			`ID("ava labs")`,
 			ID{'a', 'v', 'a', ' ', 'l', 'a', 'b', 's'},
-			[]byte("\"jvYi6Tn9idMi7BaymUVi9zWjg5tpmW7trfKG1AYJLKZJ2fsU7\""),
+			[]byte(`"jvYi6Tn9idMi7BaymUVi9zWjg5tpmW7trfKG1AYJLKZJ2fsU7"`),
 			nil,
 		},
 	}
@@ -127,10 +219,15 @@ func TestIDUnmarshalJSON(t *testing.T) {
 		out   ID
 		err   error
 	}{
-		{"ID{}", []byte("null"), ID{}, nil},
 		{
-			"ID(\"ava labs\")",
-			[]byte("\"jvYi6Tn9idMi7BaymUVi9zWjg5tpmW7trfKG1AYJLKZJ2fsU7\""),
+			"ID{}",
+			[]byte("null"),
+			ID{},
+			nil,
+		},
+		{
+			`ID("ava labs")`,
+			[]byte(`"jvYi6Tn9idMi7BaymUVi9zWjg5tpmW7trfKG1AYJLKZJ2fsU7"`),
 			ID{'a', 'v', 'a', ' ', 'l', 'a', 'b', 's'},
 			nil,
 		},
@@ -200,26 +297,34 @@ func TestIDMapMarshalling(t *testing.T) {
 	require.Equal(originalMap, unmarshalledMap)
 }
 
-func TestIDLess(t *testing.T) {
-	require := require.New(t)
+func TestIDCompare(t *testing.T) {
+	tests := []struct {
+		a        ID
+		b        ID
+		expected int
+	}{
+		{
+			a:        ID{1},
+			b:        ID{0},
+			expected: 1,
+		},
+		{
+			a:        ID{1},
+			b:        ID{1},
+			expected: 0,
+		},
+		{
+			a:        ID{1, 0},
+			b:        ID{1, 2},
+			expected: -1,
+		},
+	}
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("%s_%s_%d", test.a, test.b, test.expected), func(t *testing.T) {
+			require := require.New(t)
 
-	id1 := ID{}
-	id2 := ID{}
-	require.False(id1.Less(id2))
-	require.False(id2.Less(id1))
-
-	id1 = ID{1}
-	id2 = ID{0}
-	require.False(id1.Less(id2))
-	require.True(id2.Less(id1))
-
-	id1 = ID{1}
-	id2 = ID{1}
-	require.False(id1.Less(id2))
-	require.False(id2.Less(id1))
-
-	id1 = ID{1, 0}
-	id2 = ID{1, 2}
-	require.True(id1.Less(id2))
-	require.False(id2.Less(id1))
+			require.Equal(test.expected, test.a.Compare(test.b))
+			require.Equal(-test.expected, test.b.Compare(test.a))
+		})
+	}
 }

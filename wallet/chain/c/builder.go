@@ -1,17 +1,14 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package c
 
 import (
+	"context"
 	"errors"
 	"math/big"
 
-	stdcontext "context"
-
 	"github.com/ava-labs/coreth/plugin/evm"
-
-	ethcommon "github.com/ethereum/go-ethereum/common"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils"
@@ -20,6 +17,8 @@ import (
 	"github.com/ava-labs/avalanchego/vms/components/avax"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/avalanchego/wallet/subnet/primary/common"
+
+	ethcommon "github.com/ethereum/go-ethereum/common"
 )
 
 const avaxConversionRateInt = 1_000_000_000
@@ -42,6 +41,10 @@ var (
 // Builder provides a convenient interface for building unsigned C-chain
 // transactions.
 type Builder interface {
+	// Context returns the configuration of the chain that this builder uses to
+	// create transactions.
+	Context() *Context
+
 	// GetBalance calculates the amount of AVAX that this builder has control
 	// over.
 	GetBalance(
@@ -87,16 +90,15 @@ type Builder interface {
 // BuilderBackend specifies the required information needed to build unsigned
 // C-chain transactions.
 type BuilderBackend interface {
-	Context
-
-	UTXOs(ctx stdcontext.Context, sourceChainID ids.ID) ([]*avax.UTXO, error)
-	Balance(ctx stdcontext.Context, addr ethcommon.Address) (*big.Int, error)
-	Nonce(ctx stdcontext.Context, addr ethcommon.Address) (uint64, error)
+	UTXOs(ctx context.Context, sourceChainID ids.ID) ([]*avax.UTXO, error)
+	Balance(ctx context.Context, addr ethcommon.Address) (*big.Int, error)
+	Nonce(ctx context.Context, addr ethcommon.Address) (uint64, error)
 }
 
 type builder struct {
 	avaxAddrs set.Set[ids.ShortID]
 	ethAddrs  set.Set[ethcommon.Address]
+	context   *Context
 	backend   BuilderBackend
 }
 
@@ -111,13 +113,19 @@ type builder struct {
 func NewBuilder(
 	avaxAddrs set.Set[ids.ShortID],
 	ethAddrs set.Set[ethcommon.Address],
+	context *Context,
 	backend BuilderBackend,
 ) Builder {
 	return &builder{
 		avaxAddrs: avaxAddrs,
 		ethAddrs:  ethAddrs,
+		context:   context,
 		backend:   backend,
 	}
+}
+
+func (b *builder) Context() *Context {
+	return b.context
 }
 
 func (b *builder) GetBalance(
@@ -153,7 +161,7 @@ func (b *builder) GetImportableBalance(
 	var (
 		addrs           = ops.Addresses(b.avaxAddrs)
 		minIssuanceTime = ops.MinIssuanceTime()
-		avaxAssetID     = b.backend.AVAXAssetID()
+		avaxAssetID     = b.context.AVAXAssetID
 		balance         uint64
 	)
 	for _, utxo := range utxos {
@@ -162,7 +170,7 @@ func (b *builder) GetImportableBalance(
 			continue
 		}
 
-		newBalance, err := math.Add64(balance, amount)
+		newBalance, err := math.Add(balance, amount)
 		if err != nil {
 			return 0, err
 		}
@@ -187,7 +195,7 @@ func (b *builder) NewImportTx(
 	var (
 		addrs           = ops.Addresses(b.avaxAddrs)
 		minIssuanceTime = ops.MinIssuanceTime()
-		avaxAssetID     = b.backend.AVAXAssetID()
+		avaxAssetID     = b.context.AVAXAssetID
 
 		importedInputs = make([]*avax.TransferableInput, 0, len(utxos))
 		importedAmount uint64
@@ -201,6 +209,7 @@ func (b *builder) NewImportTx(
 		importedInputs = append(importedInputs, &avax.TransferableInput{
 			UTXOID: utxo.UTXOID,
 			Asset:  utxo.Asset,
+			FxID:   secp256k1fx.ID,
 			In: &secp256k1fx.TransferInput{
 				Amt: amount,
 				Input: secp256k1fx.Input{
@@ -209,7 +218,7 @@ func (b *builder) NewImportTx(
 			},
 		})
 
-		newImportedAmount, err := math.Add64(importedAmount, amount)
+		newImportedAmount, err := math.Add(importedAmount, amount)
 		if err != nil {
 			return nil, err
 		}
@@ -218,8 +227,8 @@ func (b *builder) NewImportTx(
 
 	utils.Sort(importedInputs)
 	tx := &evm.UnsignedImportTx{
-		NetworkID:      b.backend.NetworkID(),
-		BlockchainID:   b.backend.BlockchainID(),
+		NetworkID:      b.context.NetworkID,
+		BlockchainID:   b.context.BlockchainID,
 		SourceChain:    chainID,
 		ImportedInputs: importedInputs,
 	}
@@ -260,17 +269,18 @@ func (b *builder) NewExportTx(
 	options ...common.Option,
 ) (*evm.UnsignedExportTx, error) {
 	var (
-		avaxAssetID     = b.backend.AVAXAssetID()
+		avaxAssetID     = b.context.AVAXAssetID
 		exportedOutputs = make([]*avax.TransferableOutput, len(outputs))
 		exportedAmount  uint64
 	)
 	for i, output := range outputs {
 		exportedOutputs[i] = &avax.TransferableOutput{
 			Asset: avax.Asset{ID: avaxAssetID},
+			FxID:  secp256k1fx.ID,
 			Out:   output,
 		}
 
-		newExportedAmount, err := math.Add64(exportedAmount, output.Amt)
+		newExportedAmount, err := math.Add(exportedAmount, output.Amt)
 		if err != nil {
 			return nil, err
 		}
@@ -279,8 +289,8 @@ func (b *builder) NewExportTx(
 
 	avax.SortTransferableOutputs(exportedOutputs, evm.Codec)
 	tx := &evm.UnsignedExportTx{
-		NetworkID:        b.backend.NetworkID(),
-		BlockchainID:     b.backend.BlockchainID(),
+		NetworkID:        b.context.NetworkID,
+		BlockchainID:     b.context.BlockchainID,
 		DestinationChain: chainID,
 		ExportedOutputs:  exportedOutputs,
 	}
@@ -301,7 +311,7 @@ func (b *builder) NewExportTx(
 		return nil, err
 	}
 
-	amountToConsume, err := math.Add64(exportedAmount, initialFee)
+	amountToConsume, err := math.Add(exportedAmount, initialFee)
 	if err != nil {
 		return nil, err
 	}
@@ -350,7 +360,7 @@ func (b *builder) NewExportTx(
 		// Update the cost for the next iteration
 		cost = newCost
 
-		amountToConsume, err = math.Add64(amountToConsume, additionalFee)
+		amountToConsume, err = math.Add(amountToConsume, additionalFee)
 		if err != nil {
 			return nil, err
 		}
@@ -360,7 +370,7 @@ func (b *builder) NewExportTx(
 			return nil, err
 		}
 
-		inputAmount := math.Min(amountToConsume, avaxBalance)
+		inputAmount := min(amountToConsume, avaxBalance)
 		inputs = append(inputs, evm.EVMInput{
 			Address: addr,
 			Amount:  inputAmount,
@@ -376,6 +386,14 @@ func (b *builder) NewExportTx(
 
 	utils.Sort(inputs)
 	tx.Ins = inputs
+
+	snowCtx, err := newSnowContext(b.context)
+	if err != nil {
+		return nil, err
+	}
+	for _, out := range tx.ExportedOutputs {
+		out.InitCtx(snowCtx)
+	}
 	return tx, nil
 }
 

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package payload
@@ -37,7 +37,7 @@ func ParseAddressedCall(b []byte) (*AddressedCall, error) {
 	}
 	payload, ok := payloadIntf.(*AddressedCall)
 	if !ok {
-		return nil, fmt.Errorf("%w: %T", errWrongType, payloadIntf)
+		return nil, fmt.Errorf("%w: %T", ErrWrongType, payloadIntf)
 	}
 	return payload, nil
 }

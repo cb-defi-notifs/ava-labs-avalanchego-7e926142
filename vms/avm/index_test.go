@@ -1,14 +1,12 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package avm
 
 import (
-	"context"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/stretchr/testify/require"
 
 	"github.com/ava-labs/avalanchego/database"
@@ -16,11 +14,11 @@ import (
 	"github.com/ava-labs/avalanchego/database/prefixdb"
 	"github.com/ava-labs/avalanchego/database/versiondb"
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/upgrade/upgradetest"
 	"github.com/ava-labs/avalanchego/utils"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/utils/logging"
-	"github.com/ava-labs/avalanchego/vms/avm/config"
 	"github.com/ava-labs/avalanchego/vms/avm/txs"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
 	"github.com/ava-labs/avalanchego/vms/components/index"
@@ -30,13 +28,8 @@ import (
 func TestIndexTransaction_Ordered(t *testing.T) {
 	require := require.New(t)
 
-	env := setup(t, &envConfig{
-		vmStaticConfig: &config.Config{},
-	})
-	defer func() {
-		require.NoError(env.vm.Shutdown(context.Background()))
-		env.vm.ctx.Lock.Unlock()
-	}()
+	env := setup(t, &envConfig{fork: upgradetest.Durango})
+	defer env.vm.ctx.Lock.Unlock()
 
 	key := keys[0]
 	addr := key.PublicKey().Address()
@@ -52,11 +45,14 @@ func TestIndexTransaction_Ordered(t *testing.T) {
 		env.vm.state.AddUTXO(utxo)
 
 		// make transaction
-		tx := buildTX(utxoID, txAssetID, addr)
+		tx := buildTX(env.vm.ctx.XChainID, utxoID, txAssetID, addr)
 		require.NoError(tx.SignSECP256K1Fx(env.vm.parser.Codec(), [][]*secp256k1.PrivateKey{{key}}))
 
-		// issue transaction
+		env.vm.ctx.Lock.Unlock()
+
 		issueAndAccept(require, env.vm, env.issuer, tx)
+
+		env.vm.ctx.Lock.Lock()
 
 		txs = append(txs, tx)
 	}
@@ -71,13 +67,8 @@ func TestIndexTransaction_Ordered(t *testing.T) {
 func TestIndexTransaction_MultipleTransactions(t *testing.T) {
 	require := require.New(t)
 
-	env := setup(t, &envConfig{
-		vmStaticConfig: &config.Config{},
-	})
-	defer func() {
-		require.NoError(env.vm.Shutdown(context.Background()))
-		env.vm.ctx.Lock.Unlock()
-	}()
+	env := setup(t, &envConfig{fork: upgradetest.Durango})
+	defer env.vm.ctx.Lock.Unlock()
 
 	addressTxMap := map[ids.ShortID]*txs.Tx{}
 	txAssetID := avax.Asset{ID: env.genesisTx.ID()}
@@ -93,11 +84,15 @@ func TestIndexTransaction_MultipleTransactions(t *testing.T) {
 		env.vm.state.AddUTXO(utxo)
 
 		// make transaction
-		tx := buildTX(utxoID, txAssetID, addr)
+		tx := buildTX(env.vm.ctx.XChainID, utxoID, txAssetID, addr)
 		require.NoError(tx.SignSECP256K1Fx(env.vm.parser.Codec(), [][]*secp256k1.PrivateKey{{key}}))
+
+		env.vm.ctx.Lock.Unlock()
 
 		// issue transaction
 		issueAndAccept(require, env.vm, env.issuer, tx)
+
+		env.vm.ctx.Lock.Lock()
 
 		addressTxMap[addr] = tx
 	}
@@ -115,13 +110,8 @@ func TestIndexTransaction_MultipleTransactions(t *testing.T) {
 func TestIndexTransaction_MultipleAddresses(t *testing.T) {
 	require := require.New(t)
 
-	env := setup(t, &envConfig{
-		vmStaticConfig: &config.Config{},
-	})
-	defer func() {
-		require.NoError(env.vm.Shutdown(context.Background()))
-		env.vm.ctx.Lock.Unlock()
-	}()
+	env := setup(t, &envConfig{fork: upgradetest.Durango})
+	defer env.vm.ctx.Lock.Unlock()
 
 	addrs := make([]ids.ShortID, len(keys))
 	for i, key := range keys {
@@ -142,11 +132,14 @@ func TestIndexTransaction_MultipleAddresses(t *testing.T) {
 	env.vm.state.AddUTXO(utxo)
 
 	// make transaction
-	tx := buildTX(utxoID, txAssetID, addrs...)
+	tx := buildTX(env.vm.ctx.XChainID, utxoID, txAssetID, addrs...)
 	require.NoError(tx.SignSECP256K1Fx(env.vm.parser.Codec(), [][]*secp256k1.PrivateKey{{key}}))
 
-	// issue transaction
+	env.vm.ctx.Lock.Unlock()
+
 	issueAndAccept(require, env.vm, env.issuer, tx)
+
+	env.vm.ctx.Lock.Lock()
 
 	assertIndexedTX(t, env.vm.db, 0, addr, txAssetID.ID, tx.ID())
 	assertLatestIdx(t, env.vm.db, addr, txAssetID.ID, 1)
@@ -155,11 +148,8 @@ func TestIndexTransaction_MultipleAddresses(t *testing.T) {
 func TestIndexer_Read(t *testing.T) {
 	require := require.New(t)
 
-	env := setup(t, &envConfig{})
-	defer func() {
-		require.NoError(env.vm.Shutdown(context.Background()))
-		env.vm.ctx.Lock.Unlock()
-	}()
+	env := setup(t, &envConfig{fork: upgradetest.Durango})
+	defer env.vm.ctx.Lock.Unlock()
 
 	// generate test address and asset IDs
 	assetID := ids.GenerateTestID()
@@ -249,7 +239,7 @@ func buildUTXO(utxoID avax.UTXOID, txAssetID avax.Asset, addr ids.ShortID) *avax
 		UTXOID: utxoID,
 		Asset:  txAssetID,
 		Out: &secp256k1fx.TransferOutput{
-			Amt: 1000,
+			Amt: startBalance,
 			OutputOwners: secp256k1fx.OutputOwners{
 				Threshold: 1,
 				Addrs:     []ids.ShortID{addr},
@@ -258,7 +248,7 @@ func buildUTXO(utxoID avax.UTXOID, txAssetID avax.Asset, addr ids.ShortID) *avax
 	}
 }
 
-func buildTX(utxoID avax.UTXOID, txAssetID avax.Asset, address ...ids.ShortID) *txs.Tx {
+func buildTX(chainID ids.ID, utxoID avax.UTXOID, txAssetID avax.Asset, address ...ids.ShortID) *txs.Tx {
 	return &txs.Tx{Unsigned: &txs.BaseTx{
 		BaseTx: avax.BaseTx{
 			NetworkID:    constants.UnitTestID,
@@ -267,14 +257,14 @@ func buildTX(utxoID avax.UTXOID, txAssetID avax.Asset, address ...ids.ShortID) *
 				UTXOID: utxoID,
 				Asset:  txAssetID,
 				In: &secp256k1fx.TransferInput{
-					Amt:   1000,
+					Amt:   startBalance,
 					Input: secp256k1fx.Input{SigIndices: []uint32{0}},
 				},
 			}},
 			Outs: []*avax.TransferableOutput{{
 				Asset: txAssetID,
 				Out: &secp256k1fx.TransferOutput{
-					Amt: 1000,
+					Amt: startBalance - testTxFee,
 					OutputOwners: secp256k1fx.OutputOwners{
 						Threshold: 1,
 						Addrs:     address,

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package subnets
@@ -17,8 +17,7 @@ var validParameters = snowball.Parameters{
 	K:                     1,
 	AlphaPreference:       1,
 	AlphaConfidence:       1,
-	BetaVirtuous:          1,
-	BetaRogue:             1,
+	Beta:                  1,
 	ConcurrentRepolls:     1,
 	OptimalProcessing:     1,
 	MaxOutstandingItems:   1,

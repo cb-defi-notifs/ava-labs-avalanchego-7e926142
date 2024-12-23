@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package executor
@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
 	"go.uber.org/mock/gomock"
 
 	"github.com/ava-labs/avalanchego/chains/atomic"
@@ -16,13 +15,15 @@ import (
 	"github.com/ava-labs/avalanchego/database/memdb"
 	"github.com/ava-labs/avalanchego/database/prefixdb"
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/snow/validators"
+	"github.com/ava-labs/avalanchego/snow/snowtest"
+	"github.com/ava-labs/avalanchego/snow/validators/validatorsmock"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/secp256k1"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/timer/mockable"
 	"github.com/ava-labs/avalanchego/vms/avm/fxs"
 	"github.com/ava-labs/avalanchego/vms/avm/state"
+	"github.com/ava-labs/avalanchego/vms/avm/state/statemock"
 	"github.com/ava-labs/avalanchego/vms/avm/txs"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
 	"github.com/ava-labs/avalanchego/vms/components/verify"
@@ -30,7 +31,7 @@ import (
 )
 
 func TestSemanticVerifierBaseTx(t *testing.T) {
-	ctx := newContext(t)
+	ctx := snowtest.Context(t, snowtest.XChainID)
 
 	typeToFxIndex := make(map[reflect.Type]int)
 	secpFx := &secp256k1fx.Fx{}
@@ -124,7 +125,7 @@ func TestSemanticVerifierBaseTx(t *testing.T) {
 		{
 			name: "valid",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 
 				state.EXPECT().GetUTXO(utxoID.InputID()).Return(&utxo, nil)
 				state.EXPECT().GetTx(asset.ID).Return(&createAssetTx, nil)
@@ -148,7 +149,7 @@ func TestSemanticVerifierBaseTx(t *testing.T) {
 		{
 			name: "assetID mismatch",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 
 				utxo := utxo
 				utxo.Asset.ID = ids.GenerateTestID()
@@ -174,7 +175,7 @@ func TestSemanticVerifierBaseTx(t *testing.T) {
 		{
 			name: "not allowed input feature extension",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 
 				unsignedCreateAssetTx := unsignedCreateAssetTx
 				unsignedCreateAssetTx.States = nil
@@ -205,7 +206,7 @@ func TestSemanticVerifierBaseTx(t *testing.T) {
 		{
 			name: "invalid signature",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 
 				state.EXPECT().GetUTXO(utxoID.InputID()).Return(&utxo, nil)
 				state.EXPECT().GetTx(asset.ID).Return(&createAssetTx, nil)
@@ -229,7 +230,7 @@ func TestSemanticVerifierBaseTx(t *testing.T) {
 		{
 			name: "missing UTXO",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 
 				state.EXPECT().GetUTXO(utxoID.InputID()).Return(nil, database.ErrNotFound)
 
@@ -252,7 +253,7 @@ func TestSemanticVerifierBaseTx(t *testing.T) {
 		{
 			name: "invalid UTXO amount",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 
 				output := output
 				output.Amt--
@@ -282,7 +283,7 @@ func TestSemanticVerifierBaseTx(t *testing.T) {
 		{
 			name: "not allowed output feature extension",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 
 				unsignedCreateAssetTx := unsignedCreateAssetTx
 				unsignedCreateAssetTx.States = nil
@@ -318,7 +319,7 @@ func TestSemanticVerifierBaseTx(t *testing.T) {
 		{
 			name: "unknown asset",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 
 				state.EXPECT().GetUTXO(utxoID.InputID()).Return(&utxo, nil)
 				state.EXPECT().GetTx(asset.ID).Return(nil, database.ErrNotFound)
@@ -342,7 +343,7 @@ func TestSemanticVerifierBaseTx(t *testing.T) {
 		{
 			name: "not an asset",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 
 				tx := txs.Tx{
 					Unsigned: &baseTx,
@@ -387,12 +388,7 @@ func TestSemanticVerifierBaseTx(t *testing.T) {
 }
 
 func TestSemanticVerifierExportTx(t *testing.T) {
-	ctx := newContext(t)
-	ctrl := gomock.NewController(t)
-
-	validatorState := validators.NewMockState(ctrl)
-	validatorState.EXPECT().GetSubnetID(gomock.Any(), ctx.CChainID).AnyTimes().Return(ctx.SubnetID, nil)
-	ctx.ValidatorState = validatorState
+	ctx := snowtest.Context(t, snowtest.XChainID)
 
 	typeToFxIndex := make(map[reflect.Type]int)
 	secpFx := &secp256k1fx.Fx{}
@@ -490,7 +486,7 @@ func TestSemanticVerifierExportTx(t *testing.T) {
 		{
 			name: "valid",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 
 				state.EXPECT().GetUTXO(utxoID.InputID()).Return(&utxo, nil)
 				state.EXPECT().GetTx(asset.ID).Return(&createAssetTx, nil)
@@ -514,7 +510,7 @@ func TestSemanticVerifierExportTx(t *testing.T) {
 		{
 			name: "assetID mismatch",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 
 				utxo := utxo
 				utxo.Asset.ID = ids.GenerateTestID()
@@ -540,7 +536,7 @@ func TestSemanticVerifierExportTx(t *testing.T) {
 		{
 			name: "not allowed input feature extension",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 
 				unsignedCreateAssetTx := unsignedCreateAssetTx
 				unsignedCreateAssetTx.States = nil
@@ -571,7 +567,7 @@ func TestSemanticVerifierExportTx(t *testing.T) {
 		{
 			name: "invalid signature",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 
 				state.EXPECT().GetUTXO(utxoID.InputID()).Return(&utxo, nil)
 				state.EXPECT().GetTx(asset.ID).Return(&createAssetTx, nil)
@@ -595,7 +591,7 @@ func TestSemanticVerifierExportTx(t *testing.T) {
 		{
 			name: "missing UTXO",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 
 				state.EXPECT().GetUTXO(utxoID.InputID()).Return(nil, database.ErrNotFound)
 
@@ -618,7 +614,7 @@ func TestSemanticVerifierExportTx(t *testing.T) {
 		{
 			name: "invalid UTXO amount",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 
 				output := output
 				output.Amt--
@@ -648,7 +644,7 @@ func TestSemanticVerifierExportTx(t *testing.T) {
 		{
 			name: "not allowed output feature extension",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 
 				unsignedCreateAssetTx := unsignedCreateAssetTx
 				unsignedCreateAssetTx.States = nil
@@ -684,7 +680,7 @@ func TestSemanticVerifierExportTx(t *testing.T) {
 		{
 			name: "unknown asset",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 
 				state.EXPECT().GetUTXO(utxoID.InputID()).Return(&utxo, nil)
 				state.EXPECT().GetTx(asset.ID).Return(nil, database.ErrNotFound)
@@ -708,7 +704,7 @@ func TestSemanticVerifierExportTx(t *testing.T) {
 		{
 			name: "not an asset",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 
 				tx := txs.Tx{
 					Unsigned: &baseTx,
@@ -756,9 +752,9 @@ func TestSemanticVerifierExportTxDifferentSubnet(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 
-	ctx := newContext(t)
+	ctx := snowtest.Context(t, snowtest.XChainID)
 
-	validatorState := validators.NewMockState(ctrl)
+	validatorState := validatorsmock.NewState(ctrl)
 	validatorState.EXPECT().GetSubnetID(gomock.Any(), ctx.CChainID).AnyTimes().Return(ids.GenerateTestID(), nil)
 	ctx.ValidatorState = validatorState
 
@@ -849,7 +845,7 @@ func TestSemanticVerifierExportTxDifferentSubnet(t *testing.T) {
 		Unsigned: &unsignedCreateAssetTx,
 	}
 
-	state := state.NewMockChain(ctrl)
+	state := statemock.NewChain(ctrl)
 
 	state.EXPECT().GetUTXO(utxoID.InputID()).Return(&utxo, nil)
 	state.EXPECT().GetTx(asset.ID).Return(&createAssetTx, nil)
@@ -873,13 +869,7 @@ func TestSemanticVerifierExportTxDifferentSubnet(t *testing.T) {
 }
 
 func TestSemanticVerifierImportTx(t *testing.T) {
-	ctrl := gomock.NewController(t)
-
-	ctx := newContext(t)
-
-	validatorState := validators.NewMockState(ctrl)
-	validatorState.EXPECT().GetSubnetID(gomock.Any(), ctx.CChainID).AnyTimes().Return(ctx.SubnetID, nil)
-	ctx.ValidatorState = validatorState
+	ctx := snowtest.Context(t, snowtest.XChainID)
 
 	m := atomic.NewMemory(prefixdb.New([]byte{0}, memdb.New()))
 	ctx.SharedMemory = m.NewSharedMemory(ctx.ChainID)
@@ -1006,7 +996,7 @@ func TestSemanticVerifierImportTx(t *testing.T) {
 		{
 			name: "valid",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 				state.EXPECT().GetUTXO(utxoID.InputID()).Return(&utxo, nil).AnyTimes()
 				state.EXPECT().GetTx(asset.ID).Return(&createAssetTx, nil).AnyTimes()
 				return state
@@ -1019,7 +1009,7 @@ func TestSemanticVerifierImportTx(t *testing.T) {
 		{
 			name: "not allowed input feature extension",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 				unsignedCreateAssetTx := unsignedCreateAssetTx
 				unsignedCreateAssetTx.States = nil
 				createAssetTx := txs.Tx{
@@ -1037,7 +1027,7 @@ func TestSemanticVerifierImportTx(t *testing.T) {
 		{
 			name: "invalid signature",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 				state.EXPECT().GetUTXO(utxoID.InputID()).Return(&utxo, nil).AnyTimes()
 				state.EXPECT().GetTx(asset.ID).Return(&createAssetTx, nil).AnyTimes()
 				return state
@@ -1059,7 +1049,7 @@ func TestSemanticVerifierImportTx(t *testing.T) {
 		{
 			name: "not allowed output feature extension",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 				unsignedCreateAssetTx := unsignedCreateAssetTx
 				unsignedCreateAssetTx.States = nil
 				createAssetTx := txs.Tx{
@@ -1088,7 +1078,7 @@ func TestSemanticVerifierImportTx(t *testing.T) {
 		{
 			name: "unknown asset",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 				state.EXPECT().GetUTXO(utxoID.InputID()).Return(&utxo, nil).AnyTimes()
 				state.EXPECT().GetTx(asset.ID).Return(nil, database.ErrNotFound)
 				return state
@@ -1101,7 +1091,7 @@ func TestSemanticVerifierImportTx(t *testing.T) {
 		{
 			name: "not an asset",
 			stateFunc: func(ctrl *gomock.Controller) state.Chain {
-				state := state.NewMockChain(ctrl)
+				state := statemock.NewChain(ctrl)
 				tx := txs.Tx{
 					Unsigned: &baseTx,
 				}

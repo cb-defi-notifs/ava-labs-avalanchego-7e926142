@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package executor
@@ -94,40 +94,6 @@ func getDelegatorRules(
 	}, nil
 }
 
-// GetNextStakerChangeTime returns the next time a staker will be either added
-// or removed to/from the current validator set.
-func GetNextStakerChangeTime(state state.Chain) (time.Time, error) {
-	currentStakerIterator, err := state.GetCurrentStakerIterator()
-	if err != nil {
-		return time.Time{}, err
-	}
-	defer currentStakerIterator.Release()
-
-	pendingStakerIterator, err := state.GetPendingStakerIterator()
-	if err != nil {
-		return time.Time{}, err
-	}
-	defer pendingStakerIterator.Release()
-
-	hasCurrentStaker := currentStakerIterator.Next()
-	hasPendingStaker := pendingStakerIterator.Next()
-	switch {
-	case hasCurrentStaker && hasPendingStaker:
-		nextCurrentTime := currentStakerIterator.Value().NextTime
-		nextPendingTime := pendingStakerIterator.Value().NextTime
-		if nextCurrentTime.Before(nextPendingTime) {
-			return nextCurrentTime, nil
-		}
-		return nextPendingTime, nil
-	case hasCurrentStaker:
-		return currentStakerIterator.Value().NextTime, nil
-	case hasPendingStaker:
-		return pendingStakerIterator.Value().NextTime, nil
-	default:
-		return time.Time{}, database.ErrNotFound
-	}
-}
-
 // GetValidator returns information about the given validator, which may be a
 // current validator or pending validator.
 func GetValidator(state state.Chain, subnetID ids.ID, nodeID ids.NodeID) (*state.Staker, error) {
@@ -151,13 +117,15 @@ func overDelegated(
 	state state.Chain,
 	validator *state.Staker,
 	weightLimit uint64,
-	delegator *state.Staker,
+	delegatorWeight uint64,
+	delegatorStartTime time.Time,
+	delegatorEndTime time.Time,
 ) (bool, error) {
-	maxWeight, err := GetMaxWeight(state, validator, delegator.StartTime, delegator.EndTime)
+	maxWeight, err := GetMaxWeight(state, validator, delegatorStartTime, delegatorEndTime)
 	if err != nil {
 		return true, err
 	}
-	newMaxWeight, err := math.Add64(maxWeight, delegator.Weight)
+	newMaxWeight, err := math.Add(maxWeight, delegatorWeight)
 	if err != nil {
 		return true, err
 	}
@@ -191,7 +159,7 @@ func GetMaxWeight(
 	for currentDelegatorIterator.Next() {
 		currentDelegator := currentDelegatorIterator.Value()
 
-		currentWeight, err = math.Add64(currentWeight, currentDelegator.Weight)
+		currentWeight, err = math.Add(currentWeight, currentDelegator.Weight)
 		if err != nil {
 			currentDelegatorIterator.Release()
 			return 0, err
@@ -229,14 +197,14 @@ func GetMaxWeight(
 		if !delegator.NextTime.Before(startTime) {
 			// We have advanced time to be at the inside of the delegation
 			// window. Make sure that the max weight is updated accordingly.
-			currentMax = math.Max(currentMax, currentWeight)
+			currentMax = max(currentMax, currentWeight)
 		}
 
 		var op func(uint64, uint64) (uint64, error)
 		if isAdded {
-			op = math.Add64
+			op = math.Add
 		} else {
-			op = math.Sub[uint64]
+			op = math.Sub
 		}
 		currentWeight, err = op(currentWeight, delegator.Weight)
 		if err != nil {
@@ -246,7 +214,7 @@ func GetMaxWeight(
 	// Because we assume [startTime] < [endTime], we have advanced time to
 	// be at the end of the delegation window. Make sure that the max weight is
 	// updated accordingly.
-	return math.Max(currentMax, currentWeight), nil
+	return max(currentMax, currentWeight), nil
 }
 
 func GetTransformSubnetTx(chain state.Chain, subnetID ids.ID) (*txs.TransformSubnetTx, error) {

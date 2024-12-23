@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package hierarchycodec
@@ -12,11 +12,6 @@ import (
 	"github.com/ava-labs/avalanchego/codec/reflectcodec"
 	"github.com/ava-labs/avalanchego/utils/bimap"
 	"github.com/ava-labs/avalanchego/utils/wrappers"
-)
-
-const (
-	// default max length of a slice being marshalled by Marshal(). Should be <= math.MaxUint32.
-	defaultMaxSliceLength = 256 * 1024
 )
 
 var (
@@ -50,19 +45,19 @@ type hierarchyCodec struct {
 }
 
 // New returns a new, concurrency-safe codec
-func New(tagNames []string, maxSliceLen uint32) Codec {
+func New(tagNames []string) Codec {
 	hCodec := &hierarchyCodec{
 		currentGroupID:  0,
 		nextTypeID:      0,
 		registeredTypes: bimap.New[typeID, reflect.Type](),
 	}
-	hCodec.Codec = reflectcodec.New(hCodec, tagNames, maxSliceLen)
+	hCodec.Codec = reflectcodec.New(hCodec, tagNames)
 	return hCodec
 }
 
 // NewDefault returns a new codec with reasonable default values
 func NewDefault() Codec {
-	return New([]string{reflectcodec.DefaultTagName}, defaultMaxSliceLength)
+	return New([]string{reflectcodec.DefaultTagName})
 }
 
 // SkipRegistrations some number of type IDs

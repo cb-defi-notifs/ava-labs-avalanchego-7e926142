@@ -1,11 +1,10 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package p2p
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"go.uber.org/zap"
@@ -16,10 +15,17 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 )
 
-var (
-	ErrNotValidator = errors.New("not a validator")
+// Standardized identifiers for application protocol handlers
+const (
+	TxGossipHandlerID = iota
+	AtomicTxGossipHandlerID
+	// SignatureRequestHandlerID is specified in ACP-118: https://github.com/avalanche-foundation/ACPs/tree/main/ACPs/118-warp-signature-request
+	SignatureRequestHandlerID
+)
 
+var (
 	_ Handler = (*NoOpHandler)(nil)
+	_ Handler = (*TestHandler)(nil)
 	_ Handler = (*ValidatorHandler)(nil)
 )
 
@@ -32,22 +38,14 @@ type Handler interface {
 		gossipBytes []byte,
 	)
 	// AppRequest is called when handling an AppRequest message.
-	// Returns the bytes for the response corresponding to [requestBytes]
+	// Sends a response with the response corresponding to [requestBytes] or
+	// an application-defined error.
 	AppRequest(
 		ctx context.Context,
 		nodeID ids.NodeID,
 		deadline time.Time,
 		requestBytes []byte,
-	) ([]byte, error)
-	// CrossChainAppRequest is called when handling a CrossChainAppRequest
-	// message.
-	// Returns the bytes for the response corresponding to [requestBytes]
-	CrossChainAppRequest(
-		ctx context.Context,
-		chainID ids.ID,
-		deadline time.Time,
-		requestBytes []byte,
-	) ([]byte, error)
+	) ([]byte, *common.AppError)
 }
 
 // NoOpHandler drops all messages
@@ -55,36 +53,47 @@ type NoOpHandler struct{}
 
 func (NoOpHandler) AppGossip(context.Context, ids.NodeID, []byte) {}
 
-func (NoOpHandler) AppRequest(context.Context, ids.NodeID, time.Time, []byte) ([]byte, error) {
+func (NoOpHandler) AppRequest(context.Context, ids.NodeID, time.Time, []byte) ([]byte, *common.AppError) {
 	return nil, nil
 }
 
-func (NoOpHandler) CrossChainAppRequest(context.Context, ids.ID, time.Time, []byte) ([]byte, error) {
-	return nil, nil
+func NewValidatorHandler(
+	handler Handler,
+	validatorSet ValidatorSet,
+	log logging.Logger,
+) *ValidatorHandler {
+	return &ValidatorHandler{
+		handler:      handler,
+		validatorSet: validatorSet,
+		log:          log,
+	}
 }
 
 // ValidatorHandler drops messages from non-validators
 type ValidatorHandler struct {
-	Handler
-	ValidatorSet ValidatorSet
-	Log          logging.Logger
+	handler      Handler
+	validatorSet ValidatorSet
+	log          logging.Logger
 }
 
 func (v ValidatorHandler) AppGossip(ctx context.Context, nodeID ids.NodeID, gossipBytes []byte) {
-	if !v.ValidatorSet.Has(ctx, nodeID) {
-		v.Log.Debug("dropping message", zap.Stringer("nodeID", nodeID))
+	if !v.validatorSet.Has(ctx, nodeID) {
+		v.log.Debug("dropping message",
+			zap.Stringer("nodeID", nodeID),
+			zap.String("reason", "not a validator"),
+		)
 		return
 	}
 
-	v.Handler.AppGossip(ctx, nodeID, gossipBytes)
+	v.handler.AppGossip(ctx, nodeID, gossipBytes)
 }
 
-func (v ValidatorHandler) AppRequest(ctx context.Context, nodeID ids.NodeID, deadline time.Time, requestBytes []byte) ([]byte, error) {
-	if !v.ValidatorSet.Has(ctx, nodeID) {
+func (v ValidatorHandler) AppRequest(ctx context.Context, nodeID ids.NodeID, deadline time.Time, requestBytes []byte) ([]byte, *common.AppError) {
+	if !v.validatorSet.Has(ctx, nodeID) {
 		return nil, ErrNotValidator
 	}
 
-	return v.Handler.AppRequest(ctx, nodeID, deadline, requestBytes)
+	return v.handler.AppRequest(ctx, nodeID, deadline, requestBytes)
 }
 
 // responder automatically sends the response for a given request
@@ -106,28 +115,31 @@ func (r *responder) AppRequest(ctx context.Context, nodeID ids.NodeID, requestID
 			zap.Time("deadline", deadline),
 			zap.Uint64("handlerID", r.handlerID),
 			zap.Binary("message", request),
+			zap.Error(err),
 		)
-		return nil
+		return r.sender.SendAppError(ctx, nodeID, requestID, err.Code, err.Message)
 	}
 
 	return r.sender.SendAppResponse(ctx, nodeID, requestID, appResponse)
 }
 
-// CrossChainAppRequest calls the underlying handler and sends back the response
-// to chainID
-func (r *responder) CrossChainAppRequest(ctx context.Context, chainID ids.ID, requestID uint32, deadline time.Time, request []byte) error {
-	appResponse, err := r.Handler.CrossChainAppRequest(ctx, chainID, deadline, request)
-	if err != nil {
-		r.log.Debug("failed to handle message",
-			zap.Stringer("messageOp", message.CrossChainAppRequestOp),
-			zap.Stringer("chainID", chainID),
-			zap.Uint32("requestID", requestID),
-			zap.Time("deadline", deadline),
-			zap.Uint64("handlerID", r.handlerID),
-			zap.Binary("message", request),
-		)
-		return nil
+type TestHandler struct {
+	AppGossipF  func(ctx context.Context, nodeID ids.NodeID, gossipBytes []byte)
+	AppRequestF func(ctx context.Context, nodeID ids.NodeID, deadline time.Time, requestBytes []byte) ([]byte, *common.AppError)
+}
+
+func (t TestHandler) AppGossip(ctx context.Context, nodeID ids.NodeID, gossipBytes []byte) {
+	if t.AppGossipF == nil {
+		return
 	}
 
-	return r.sender.SendCrossChainAppResponse(ctx, chainID, requestID, appResponse)
+	t.AppGossipF(ctx, nodeID, gossipBytes)
+}
+
+func (t TestHandler) AppRequest(ctx context.Context, nodeID ids.NodeID, deadline time.Time, requestBytes []byte) ([]byte, *common.AppError) {
+	if t.AppRequestF == nil {
+		return nil, nil
+	}
+
+	return t.AppRequestF(ctx, nodeID, deadline, requestBytes)
 }

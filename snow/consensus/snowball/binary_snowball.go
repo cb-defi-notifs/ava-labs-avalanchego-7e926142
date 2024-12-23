@@ -1,15 +1,15 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package snowball
 
 import "fmt"
 
-var _ BinarySnowball = (*binarySnowball)(nil)
+var _ Binary = (*binarySnowball)(nil)
 
-func newBinarySnowball(beta, choice int) binarySnowball {
+func newBinarySnowball(alphaPreference int, terminationConditions []terminationCondition, choice int) binarySnowball {
 	return binarySnowball{
-		binarySnowflake: newBinarySnowflake(beta, choice),
+		binarySnowflake: newBinarySnowflake(alphaPreference, terminationConditions, choice),
 		preference:      choice,
 	}
 }
@@ -39,14 +39,14 @@ func (sb *binarySnowball) Preference() int {
 	return sb.preference
 }
 
-func (sb *binarySnowball) RecordSuccessfulPoll(choice int) {
-	sb.increasePreferenceStrength(choice)
-	sb.binarySnowflake.RecordSuccessfulPoll(choice)
-}
-
-func (sb *binarySnowball) RecordPollPreference(choice int) {
-	sb.increasePreferenceStrength(choice)
-	sb.binarySnowflake.RecordPollPreference(choice)
+func (sb *binarySnowball) RecordPoll(count, choice int) {
+	if count >= sb.alphaPreference {
+		sb.preferenceStrength[choice]++
+		if sb.preferenceStrength[choice] > sb.preferenceStrength[1-choice] {
+			sb.preference = choice
+		}
+	}
+	sb.binarySnowflake.RecordPoll(count, choice)
 }
 
 func (sb *binarySnowball) String() string {
@@ -56,11 +56,4 @@ func (sb *binarySnowball) String() string {
 		sb.preferenceStrength[0],
 		sb.preferenceStrength[1],
 		&sb.binarySnowflake)
-}
-
-func (sb *binarySnowball) increasePreferenceStrength(choice int) {
-	sb.preferenceStrength[choice]++
-	if sb.preferenceStrength[choice] > sb.preferenceStrength[1-choice] {
-		sb.preference = choice
-	}
 }

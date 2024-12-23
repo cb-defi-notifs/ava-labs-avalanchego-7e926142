@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package executor
@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-
 	"go.uber.org/mock/gomock"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -18,7 +17,7 @@ import (
 	"github.com/ava-labs/avalanchego/vms/platformvm/block"
 	"github.com/ava-labs/avalanchego/vms/platformvm/state"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
-	"github.com/ava-labs/avalanchego/vms/platformvm/txs/mempool"
+	"github.com/ava-labs/avalanchego/vms/platformvm/txs/mempool/mempoolmock"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 )
 
@@ -44,6 +43,7 @@ func TestRejectBlock(t *testing.T) {
 						},
 						Creds: []verify.Verifiable{},
 					},
+					[]*txs.Tx{},
 				)
 			},
 			rejectFunc: func(r *rejector, b block.Block) error {
@@ -119,7 +119,7 @@ func TestRejectBlock(t *testing.T) {
 			blk, err := tt.newBlockFunc()
 			require.NoError(err)
 
-			mempool := mempool.NewMockMempool(ctrl)
+			mempool := mempoolmock.NewMempool(ctrl)
 			state := state.NewMockState(ctrl)
 			blkIDToState := map[ids.ID]*blockState{
 				blk.Parent(): nil,

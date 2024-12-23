@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package corruptabledb
@@ -9,38 +9,39 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
 	"go.uber.org/mock/gomock"
 
 	"github.com/ava-labs/avalanchego/database"
+	"github.com/ava-labs/avalanchego/database/databasemock"
+	"github.com/ava-labs/avalanchego/database/dbtest"
 	"github.com/ava-labs/avalanchego/database/memdb"
 )
 
 var errTest = errors.New("non-nil error")
-
-func TestInterface(t *testing.T) {
-	for _, test := range database.Tests {
-		baseDB := memdb.New()
-		db := New(baseDB)
-		test(t, db)
-	}
-}
 
 func newDB() *Database {
 	baseDB := memdb.New()
 	return New(baseDB)
 }
 
+func TestInterface(t *testing.T) {
+	for name, test := range dbtest.Tests {
+		t.Run(name, func(t *testing.T) {
+			test(t, newDB())
+		})
+	}
+}
+
 func FuzzKeyValue(f *testing.F) {
-	database.FuzzKeyValue(f, newDB())
+	dbtest.FuzzKeyValue(f, newDB())
 }
 
 func FuzzNewIteratorWithPrefix(f *testing.F) {
-	database.FuzzNewIteratorWithPrefix(f, newDB())
+	dbtest.FuzzNewIteratorWithPrefix(f, newDB())
 }
 
 func FuzzNewIteratorWithStartAndPrefix(f *testing.F) {
-	database.FuzzNewIteratorWithStartAndPrefix(f, newDB())
+	dbtest.FuzzNewIteratorWithStartAndPrefix(f, newDB())
 }
 
 // TestCorruption tests to make sure corruptabledb wrapper works as expected.
@@ -101,7 +102,7 @@ func TestIterator(t *testing.T) {
 			name:              "corrupted database; Next",
 			databaseErrBefore: errTest,
 			expectedErr:       errTest,
-			modifyIter:        func(ctrl *gomock.Controller, iter *iterator) {},
+			modifyIter:        func(*gomock.Controller, *iterator) {},
 			op: func(require *require.Assertions, iter *iterator) {
 				require.False(iter.Next())
 			},
@@ -111,7 +112,7 @@ func TestIterator(t *testing.T) {
 			databaseErrBefore: nil,
 			expectedErr:       errIter,
 			modifyIter: func(ctrl *gomock.Controller, iter *iterator) {
-				mockInnerIter := database.NewMockIterator(ctrl)
+				mockInnerIter := databasemock.NewIterator(ctrl)
 				mockInnerIter.EXPECT().Next().Return(false)
 				mockInnerIter.EXPECT().Error().Return(errIter)
 				iter.Iterator = mockInnerIter
@@ -124,7 +125,7 @@ func TestIterator(t *testing.T) {
 			name:              "corrupted database; Error",
 			databaseErrBefore: errTest,
 			expectedErr:       errTest,
-			modifyIter:        func(ctrl *gomock.Controller, iter *iterator) {},
+			modifyIter:        func(*gomock.Controller, *iterator) {},
 			op: func(require *require.Assertions, iter *iterator) {
 				err := iter.Error()
 				require.ErrorIs(err, errTest)
@@ -135,7 +136,7 @@ func TestIterator(t *testing.T) {
 			databaseErrBefore: nil,
 			expectedErr:       errIter,
 			modifyIter: func(ctrl *gomock.Controller, iter *iterator) {
-				mockInnerIter := database.NewMockIterator(ctrl)
+				mockInnerIter := databasemock.NewIterator(ctrl)
 				mockInnerIter.EXPECT().Error().Return(errIter)
 				iter.Iterator = mockInnerIter
 			},
@@ -148,8 +149,8 @@ func TestIterator(t *testing.T) {
 			name:              "corrupted database; Key",
 			databaseErrBefore: errTest,
 			expectedErr:       errTest,
-			modifyIter:        func(ctrl *gomock.Controller, iter *iterator) {},
-			op: func(require *require.Assertions, iter *iterator) {
+			modifyIter:        func(*gomock.Controller, *iterator) {},
+			op: func(_ *require.Assertions, iter *iterator) {
 				_ = iter.Key()
 			},
 		},
@@ -157,8 +158,8 @@ func TestIterator(t *testing.T) {
 			name:              "corrupted database; Value",
 			databaseErrBefore: errTest,
 			expectedErr:       errTest,
-			modifyIter:        func(ctrl *gomock.Controller, iter *iterator) {},
-			op: func(require *require.Assertions, iter *iterator) {
+			modifyIter:        func(*gomock.Controller, *iterator) {},
+			op: func(_ *require.Assertions, iter *iterator) {
 				_ = iter.Value()
 			},
 		},
@@ -166,8 +167,8 @@ func TestIterator(t *testing.T) {
 			name:              "corrupted database; Release",
 			databaseErrBefore: errTest,
 			expectedErr:       errTest,
-			modifyIter:        func(ctrl *gomock.Controller, iter *iterator) {},
-			op: func(require *require.Assertions, iter *iterator) {
+			modifyIter:        func(*gomock.Controller, *iterator) {},
+			op: func(_ *require.Assertions, iter *iterator) {
 				iter.Release()
 			},
 		},

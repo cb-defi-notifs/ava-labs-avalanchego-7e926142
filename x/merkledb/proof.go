@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package merkledb
@@ -14,16 +14,12 @@ import (
 	"github.com/ava-labs/avalanchego/database/memdb"
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/trace"
-	"github.com/ava-labs/avalanchego/utils/hashing"
 	"github.com/ava-labs/avalanchego/utils/maybe"
 
 	pb "github.com/ava-labs/avalanchego/proto/pb/sync"
 )
 
-const (
-	verificationEvictionBatchSize = 0
-	verificationCacheSize         = math.MaxInt
-)
+const verificationCacheSize = math.MaxUint16
 
 var (
 	ErrInvalidProof                = errors.New("proof obtained an invalid root ID")
@@ -31,11 +27,13 @@ var (
 	ErrNonIncreasingValues         = errors.New("keys sent are not in increasing order")
 	ErrStateFromOutsideOfRange     = errors.New("state key falls outside of the start->end range")
 	ErrNonIncreasingProofNodes     = errors.New("each proof node key must be a strict prefix of the next")
+	ErrExtraProofNodes             = errors.New("extra proof nodes in path")
+	ErrDataInMissingRootProof      = errors.New("there should be no state or deleted keys in a change proof that had a missing root")
+	ErrEmptyProof                  = errors.New("proof is empty")
 	ErrNoMerkleProof               = errors.New("empty key response must include merkle proof")
 	ErrShouldJustBeRoot            = errors.New("end proof should only contain root")
 	ErrNoStartProof                = errors.New("no start proof")
 	ErrNoEndProof                  = errors.New("no end proof")
-	ErrNoProof                     = errors.New("proof has no nodes")
 	ErrProofNodeNotForKey          = errors.New("the provided node has a key that is not a prefix of the specified key")
 	ErrProofValueDoesntMatch       = errors.New("the provided value does not match the proof node for the provided key's value")
 	ErrProofNodeHasUnincludedValue = errors.New("the provided proof has a value for a key within the range that is not present in the provided key/values")
@@ -121,7 +119,7 @@ func (node *ProofNode) UnmarshalProto(pbNode *pb.ProofNode) error {
 type Proof struct {
 	// Nodes in the proof path from root --> target key
 	// (or node that would be where key is if it doesn't exist).
-	// Must always be non-empty (i.e. have the root node).
+	// Always contains at least the root.
 	Path []ProofNode
 	// This is a proof that [key] exists/doesn't exist.
 	Key Key
@@ -134,11 +132,17 @@ type Proof struct {
 // Verify returns nil if the trie given in [proof] has root [expectedRootID].
 // That is, this is a valid proof that [proof.Key] exists/doesn't exist
 // in the trie with root [expectedRootID].
-func (proof *Proof) Verify(ctx context.Context, expectedRootID ids.ID, tokenSize int) error {
+func (proof *Proof) Verify(
+	ctx context.Context,
+	expectedRootID ids.ID,
+	tokenSize int,
+	hasher Hasher,
+) error {
 	// Make sure the proof is well-formed.
 	if len(proof.Path) == 0 {
-		return ErrNoProof
+		return ErrEmptyProof
 	}
+
 	if err := verifyProofPath(proof.Path, maybe.Some(proof.Key)); err != nil {
 		return err
 	}
@@ -152,7 +156,7 @@ func (proof *Proof) Verify(ctx context.Context, expectedRootID ids.ID, tokenSize
 	// and thus has a whole number of bytes
 	if !lastNode.Key.hasPartialByte() &&
 		proof.Key == lastNode.Key &&
-		!valueOrHashMatches(proof.Value, lastNode.ValueOrHash) {
+		!valueOrHashMatches(hasher, proof.Value, lastNode.ValueOrHash) {
 		return ErrProofValueDoesntMatch
 	}
 
@@ -166,7 +170,7 @@ func (proof *Proof) Verify(ctx context.Context, expectedRootID ids.ID, tokenSize
 	}
 
 	// Don't bother locking [view] -- nobody else has a reference to it.
-	view, err := getStandaloneTrieView(ctx, nil, tokenSize)
+	view, err := getStandaloneView(ctx, nil, tokenSize)
 	if err != nil {
 		return err
 	}
@@ -174,7 +178,7 @@ func (proof *Proof) Verify(ctx context.Context, expectedRootID ids.ID, tokenSize
 	// Insert all proof nodes.
 	// [provenKey] is the key that we are proving exists, or the key
 	// that is the next key along the node path, proving that [proof.Key] doesn't exist in the trie.
-	provenKey := maybe.Some(proof.Path[len(proof.Path)-1].Key)
+	provenKey := maybe.Some(lastNode.Key)
 
 	if err = addPathInfo(view, proof.Path, provenKey, provenKey); err != nil {
 		return err
@@ -249,16 +253,12 @@ type RangeProof struct {
 	// they are also in [EndProof].
 	StartProof []ProofNode
 
-	// If no upper range bound was given, [KeyValues] is empty,
-	// and [StartProof] is non-empty, this is empty.
+	// If no upper range bound was given and [KeyValues] is empty, this is empty.
 	//
-	// If no upper range bound was given, [KeyValues] is empty,
-	// and [StartProof] is empty, this is the root.
+	// If no upper range bound was given and [KeyValues] is non-empty, this is
+	// a proof for the largest key in [KeyValues].
 	//
-	// If an upper range bound was given and [KeyValues] is empty,
-	// this is a proof for the upper range bound.
-	//
-	// Otherwise, this is a proof for the largest key in [KeyValues].
+	// Otherwise this is a proof for the upper range bound.
 	EndProof []ProofNode
 
 	// This proof proves that the key-value pairs in [KeyValues] are in the trie.
@@ -282,16 +282,15 @@ func (proof *RangeProof) Verify(
 	end maybe.Maybe[[]byte],
 	expectedRootID ids.ID,
 	tokenSize int,
+	hasher Hasher,
 ) error {
 	switch {
 	case start.HasValue() && end.HasValue() && bytes.Compare(start.Value(), end.Value()) > 0:
 		return ErrStartAfterEnd
 	case len(proof.KeyValues) == 0 && len(proof.StartProof) == 0 && len(proof.EndProof) == 0:
-		return ErrNoMerkleProof
-	case end.IsNothing() && len(proof.KeyValues) == 0 && len(proof.StartProof) > 0 && len(proof.EndProof) != 0:
+		return ErrEmptyProof
+	case end.IsNothing() && len(proof.KeyValues) == 0 && len(proof.EndProof) != 0:
 		return ErrUnexpectedEndProof
-	case end.IsNothing() && len(proof.KeyValues) == 0 && len(proof.StartProof) == 0 && len(proof.EndProof) != 1:
-		return ErrShouldJustBeRoot
 	case len(proof.EndProof) == 0 && (end.HasValue() || len(proof.KeyValues) > 0):
 		return ErrNoEndProof
 	}
@@ -331,6 +330,7 @@ func (proof *RangeProof) Verify(
 		return err
 	}
 	if err := verifyAllRangeProofKeyValuesPresent(
+		hasher,
 		proof.StartProof,
 		smallestProvenKey,
 		largestProvenKey,
@@ -345,6 +345,7 @@ func (proof *RangeProof) Verify(
 		return err
 	}
 	if err := verifyAllRangeProofKeyValuesPresent(
+		hasher,
 		proof.EndProof,
 		smallestProvenKey,
 		largestProvenKey,
@@ -363,7 +364,7 @@ func (proof *RangeProof) Verify(
 	}
 
 	// Don't need to lock [view] because nobody else has a reference to it.
-	view, err := getStandaloneTrieView(ctx, ops, tokenSize)
+	view, err := getStandaloneView(ctx, ops, tokenSize)
 	if err != nil {
 		return err
 	}
@@ -459,7 +460,13 @@ func (proof *RangeProof) UnmarshalProto(pbProof *pb.RangeProof) error {
 
 // Verify that all non-intermediate nodes in [proof] which have keys
 // in [[start], [end]] have the value given for that key in [keysValues].
-func verifyAllRangeProofKeyValuesPresent(proof []ProofNode, start maybe.Maybe[Key], end maybe.Maybe[Key], keysValues map[Key][]byte) error {
+func verifyAllRangeProofKeyValuesPresent(
+	hasher Hasher,
+	proof []ProofNode,
+	start maybe.Maybe[Key],
+	end maybe.Maybe[Key],
+	keysValues map[Key][]byte,
+) error {
 	for i := 0; i < len(proof); i++ {
 		var (
 			node    = proof[i]
@@ -473,7 +480,7 @@ func verifyAllRangeProofKeyValuesPresent(proof []ProofNode, start maybe.Maybe[Ke
 				// We didn't get a key-value pair for this key, but the proof node has a value.
 				return ErrProofNodeHasUnincludedValue
 			}
-			if ok && !valueOrHashMatches(maybe.Some(value), node.ValueOrHash) {
+			if ok && !valueOrHashMatches(hasher, maybe.Some(value), node.ValueOrHash) {
 				// We got a key-value pair for this key, but the value in the proof
 				// node doesn't match the value we got for this key.
 				return ErrProofValueDoesntMatch
@@ -626,7 +633,7 @@ func (proof *ChangeProof) UnmarshalProto(pbProof *pb.ChangeProof) error {
 // - if the node's key is within the key range, that has a value that matches the value passed in the change list or in the db
 func verifyAllChangeProofKeyValuesPresent(
 	ctx context.Context,
-	db MerkleDB,
+	db *merkleDB,
 	proof []ProofNode,
 	start maybe.Maybe[Key],
 	end maybe.Maybe[Key],
@@ -656,7 +663,7 @@ func verifyAllChangeProofKeyValuesPresent(
 					value = maybe.Some(dbValue)
 				}
 			}
-			if !valueOrHashMatches(value, node.ValueOrHash) {
+			if !valueOrHashMatches(db.hasher, value, node.ValueOrHash) {
 				return ErrProofValueDoesntMatch
 			}
 		}
@@ -740,8 +747,8 @@ func verifyProofPath(proof []ProofNode, key maybe.Maybe[Key]) error {
 		currentProofNode := proof[i]
 		nodeKey := currentProofNode.Key
 
-		// Because the interface only support []byte keys,
-		// a key with a partial byte should store a value
+		// Because the interface only supports []byte keys,
+		// a key with a partial byte may not store a value
 		if nodeKey.hasPartialByte() && proof[i].ValueOrHash.HasValue() {
 			return ErrPartialByteLengthWithValue
 		}
@@ -771,7 +778,11 @@ func verifyProofPath(proof []ProofNode, key maybe.Maybe[Key]) error {
 
 // Returns true if [value] and [valueDigest] match.
 // [valueOrHash] should be the [ValueOrHash] field of a [ProofNode].
-func valueOrHashMatches(value maybe.Maybe[[]byte], valueOrHash maybe.Maybe[[]byte]) bool {
+func valueOrHashMatches(
+	hasher Hasher,
+	value maybe.Maybe[[]byte],
+	valueOrHash maybe.Maybe[[]byte],
+) bool {
 	var (
 		valueIsNothing  = value.IsNothing()
 		digestIsNothing = valueOrHash.IsNothing()
@@ -787,8 +798,8 @@ func valueOrHashMatches(value maybe.Maybe[[]byte], valueOrHash maybe.Maybe[[]byt
 	case len(value.Value()) < HashLength:
 		return bytes.Equal(value.Value(), valueOrHash.Value())
 	default:
-		valueHash := hashing.ComputeHash256(value.Value())
-		return bytes.Equal(valueHash, valueOrHash.Value())
+		valueHash := hasher.HashValue(value.Value())
+		return bytes.Equal(valueHash[:], valueOrHash.Value())
 	}
 }
 
@@ -797,9 +808,9 @@ func valueOrHashMatches(value maybe.Maybe[[]byte], valueOrHash maybe.Maybe[[]byt
 // < [insertChildrenLessThan] or > [insertChildrenGreaterThan].
 // If [insertChildrenLessThan] is Nothing, no children are < [insertChildrenLessThan].
 // If [insertChildrenGreaterThan] is Nothing, no children are > [insertChildrenGreaterThan].
-// Assumes [t.lock] is held.
+// Assumes [v.lock] is held.
 func addPathInfo(
-	t *trieView,
+	v *view,
 	proofPath []ProofNode,
 	insertChildrenLessThan maybe.Maybe[Key],
 	insertChildrenGreaterThan maybe.Maybe[Key],
@@ -819,7 +830,7 @@ func addPathInfo(
 
 		// load the node associated with the key or create a new one
 		// pass nothing because we are going to overwrite the value digest below
-		n, err := t.insert(key, maybe.Nothing[[]byte]())
+		n, err := v.insert(key, maybe.Nothing[[]byte]())
 		if err != nil {
 			return err
 		}
@@ -835,16 +846,17 @@ func addPathInfo(
 
 		// Add [proofNode]'s children which are outside the range
 		// [insertChildrenLessThan, insertChildrenGreaterThan].
-		compressedKey := Key{}
 		for index, childID := range proofNode.Children {
+			var compressedKey Key
 			if existingChild, ok := n.children[index]; ok {
 				compressedKey = existingChild.compressedKey
 			}
-			childKey := key.Extend(ToToken(index, t.tokenSize), compressedKey)
+			childKey := key.Extend(ToToken(index, v.tokenSize), compressedKey)
 			if (shouldInsertLeftChildren && childKey.Less(insertChildrenLessThan.Value())) ||
 				(shouldInsertRightChildren && childKey.Greater(insertChildrenGreaterThan.Value())) {
-				// We didn't set the other values on the child entry, but it doesn't matter.
-				// We only need the IDs to be correct so that the calculated hash is correct.
+				// We don't set the [hasValue] field of the child but that's OK.
+				// We only need the compressed key and ID to be correct so that the
+				// calculated hash is correct.
 				n.setChildEntry(
 					index,
 					&child{
@@ -858,17 +870,18 @@ func addPathInfo(
 	return nil
 }
 
-// getStandaloneTrieView returns a new view that has nothing in it besides the changes due to [ops]
-func getStandaloneTrieView(ctx context.Context, ops []database.BatchOp, size int) (*trieView, error) {
+// getStandaloneView returns a new view that has nothing in it besides the changes due to [ops]
+func getStandaloneView(ctx context.Context, ops []database.BatchOp, size int) (*view, error) {
 	db, err := newDatabase(
 		ctx,
 		memdb.New(),
 		Config{
-			EvictionBatchSize:         verificationEvictionBatchSize,
-			Tracer:                    trace.Noop,
-			ValueNodeCacheSize:        verificationCacheSize,
-			IntermediateNodeCacheSize: verificationCacheSize,
-			BranchFactor:              tokenSizeToBranchFactor[size],
+			BranchFactor:                tokenSizeToBranchFactor[size],
+			Tracer:                      trace.Noop,
+			ValueNodeCacheSize:          verificationCacheSize,
+			IntermediateNodeCacheSize:   verificationCacheSize,
+			IntermediateWriteBufferSize: verificationCacheSize,
+			IntermediateWriteBatchSize:  verificationCacheSize,
 		},
 		&mockMetrics{},
 	)
@@ -876,5 +889,5 @@ func getStandaloneTrieView(ctx context.Context, ops []database.BatchOp, size int
 		return nil, err
 	}
 
-	return newTrieView(db, db, ViewChanges{BatchOps: ops, ConsumeBytes: true})
+	return newView(db, db, ViewChanges{BatchOps: ops, ConsumeBytes: true})
 }

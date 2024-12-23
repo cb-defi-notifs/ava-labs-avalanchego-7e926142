@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package config
@@ -14,7 +14,6 @@ import (
 
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-
 	"github.com/stretchr/testify/require"
 
 	"github.com/ava-labs/avalanchego/chains"
@@ -22,6 +21,8 @@ import (
 	"github.com/ava-labs/avalanchego/snow/consensus/snowball"
 	"github.com/ava-labs/avalanchego/subnets"
 )
+
+const chainConfigFilenameExtention = ".ex"
 
 func TestGetChainConfigsFromFiles(t *testing.T) {
 	tests := map[string]struct {
@@ -73,11 +74,11 @@ func TestGetChainConfigsFromFiles(t *testing.T) {
 			// Create custom configs
 			for key, value := range test.configs {
 				chainDir := filepath.Join(chainsDir, key)
-				setupFile(t, chainDir, chainConfigFileName+".ex", value) //nolint:goconst
+				setupFile(t, chainDir, chainConfigFileName+chainConfigFilenameExtention, value)
 			}
 			for key, value := range test.upgrades {
 				chainDir := filepath.Join(chainsDir, key)
-				setupFile(t, chainDir, chainUpgradeFileName+".ex", value)
+				setupFile(t, chainDir, chainUpgradeFileName+chainConfigFilenameExtention, value)
 			}
 
 			v := setupViper(configFile)
@@ -162,7 +163,7 @@ func TestSetChainConfigDefaultDir(t *testing.T) {
 	require.Equal(defaultChainConfigDir, v.GetString(ChainConfigDirKey))
 
 	chainsDir := filepath.Join(defaultChainConfigDir, "C")
-	setupFile(t, chainsDir, chainConfigFileName+".ex", "helloworld")
+	setupFile(t, chainsDir, chainConfigFileName+chainConfigFilenameExtention, "helloworld")
 	chainConfigs, err := getChainConfigs(v)
 	require.NoError(err)
 	expected := map[string]chains.ChainConfig{"C": {Config: []byte("helloworld"), Upgrade: []byte(nil)}}
@@ -413,24 +414,10 @@ func TestGetSubnetConfigsFromFile(t *testing.T) {
 				config, ok := given[id]
 				require.True(ok)
 
-				require.Equal(true, config.ValidatorOnly)
+				require.True(config.ValidatorOnly)
 				require.Equal(16, config.ConsensusParameters.AlphaConfidence)
 				// must still respect defaults
 				require.Equal(20, config.ConsensusParameters.K)
-			},
-			expectedErr: nil,
-		},
-		"gossip config": {
-			fileName:  "2Ctt6eGAeo4MLqTmGa7AdRecuVMPGWEX9wSsCLBYrLhX4a394i.json",
-			givenJSON: `{"appGossipNonValidatorSize": 100 }`,
-			testF: func(require *require.Assertions, given map[ids.ID]subnets.Config) {
-				id, _ := ids.FromString("2Ctt6eGAeo4MLqTmGa7AdRecuVMPGWEX9wSsCLBYrLhX4a394i")
-				config, ok := given[id]
-				require.True(ok)
-				require.Equal(uint(100), config.GossipConfig.AppGossipNonValidatorSize)
-				// must still respect defaults
-				require.Equal(20, config.ConsensusParameters.K)
-				require.Equal(uint(10), config.GossipConfig.AppGossipValidatorSize)
 			},
 			expectedErr: nil,
 		},
@@ -523,12 +510,11 @@ func TestGetSubnetConfigsFromFlags(t *testing.T) {
 				id, _ := ids.FromString("2Ctt6eGAeo4MLqTmGa7AdRecuVMPGWEX9wSsCLBYrLhX4a394i")
 				config, ok := given[id]
 				require.True(ok)
-				require.Equal(true, config.ValidatorOnly)
+				require.True(config.ValidatorOnly)
 				require.Equal(16, config.ConsensusParameters.AlphaPreference)
 				require.Equal(20, config.ConsensusParameters.AlphaConfidence)
 				require.Equal(30, config.ConsensusParameters.K)
 				// must still respect defaults
-				require.Equal(uint(10), config.GossipConfig.AppGossipValidatorSize)
 				require.Equal(256, config.ConsensusParameters.MaxOutstandingItems)
 			},
 			expectedErr: nil,

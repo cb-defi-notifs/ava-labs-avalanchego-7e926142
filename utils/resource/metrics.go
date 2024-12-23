@@ -1,12 +1,12 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package resource
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
+	"errors"
 
-	"github.com/ava-labs/avalanchego/utils"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type metrics struct {
@@ -17,50 +17,45 @@ type metrics struct {
 	numDiskWritesBytes *prometheus.GaugeVec
 }
 
-func newMetrics(namespace string, registerer prometheus.Registerer) (*metrics, error) {
+func newMetrics(registerer prometheus.Registerer) (*metrics, error) {
 	m := &metrics{
 		numCPUCycles: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Namespace: namespace,
-				Name:      "num_cpu_cycles",
-				Help:      "Total number of CPU cycles",
+				Name: "num_cpu_cycles",
+				Help: "Total number of CPU cycles",
 			},
 			[]string{"processID"},
 		),
 		numDiskReads: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Namespace: namespace,
-				Name:      "num_disk_reads",
-				Help:      "Total number of disk reads",
+				Name: "num_disk_reads",
+				Help: "Total number of disk reads",
 			},
 			[]string{"processID"},
 		),
 		numDiskReadBytes: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Namespace: namespace,
-				Name:      "num_disk_read_bytes",
-				Help:      "Total number of disk read bytes",
+				Name: "num_disk_read_bytes",
+				Help: "Total number of disk read bytes",
 			},
 			[]string{"processID"},
 		),
 		numDiskWrites: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Namespace: namespace,
-				Name:      "num_disk_writes",
-				Help:      "Total number of disk writes",
+				Name: "num_disk_writes",
+				Help: "Total number of disk writes",
 			},
 			[]string{"processID"},
 		),
 		numDiskWritesBytes: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
-				Namespace: namespace,
-				Name:      "num_disk_write_bytes",
-				Help:      "Total number of disk write bytes",
+				Name: "num_disk_write_bytes",
+				Help: "Total number of disk write bytes",
 			},
 			[]string{"processID"},
 		),
 	}
-	err := utils.Err(
+	err := errors.Join(
 		registerer.Register(m.numCPUCycles),
 		registerer.Register(m.numDiskReads),
 		registerer.Register(m.numDiskReadBytes),

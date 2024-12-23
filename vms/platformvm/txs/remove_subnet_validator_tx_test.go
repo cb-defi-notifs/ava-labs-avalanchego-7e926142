@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package txs
@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
 	"go.uber.org/mock/gomock"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -18,7 +17,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/units"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
-	"github.com/ava-labs/avalanchego/vms/components/verify"
+	"github.com/ava-labs/avalanchego/vms/components/verify/verifymock"
 	"github.com/ava-labs/avalanchego/vms/platformvm/stakeable"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/avalanchego/vms/types"
@@ -157,7 +156,7 @@ func TestRemoveSubnetValidatorTxSerialization(t *testing.T) {
 		0x00, 0x00, 0x00, 0x03,
 	}
 	var unsignedSimpleRemoveValidatorTx UnsignedTx = simpleRemoveValidatorTx
-	unsignedSimpleRemoveValidatorTxBytes, err := Codec.Marshal(Version, &unsignedSimpleRemoveValidatorTx)
+	unsignedSimpleRemoveValidatorTxBytes, err := Codec.Marshal(CodecVersion, &unsignedSimpleRemoveValidatorTx)
 	require.NoError(err)
 	require.Equal(expectedUnsignedSimpleRemoveValidatorTxBytes, unsignedSimpleRemoveValidatorTxBytes)
 
@@ -417,7 +416,7 @@ func TestRemoveSubnetValidatorTxSerialization(t *testing.T) {
 		0x00, 0x00, 0x00, 0x00,
 	}
 	var unsignedComplexRemoveValidatorTx UnsignedTx = complexRemoveValidatorTx
-	unsignedComplexRemoveValidatorTxBytes, err := Codec.Marshal(Version, &unsignedComplexRemoveValidatorTx)
+	unsignedComplexRemoveValidatorTxBytes, err := Codec.Marshal(CodecVersion, &unsignedComplexRemoveValidatorTx)
 	require.NoError(err)
 	require.Equal(expectedUnsignedComplexRemoveValidatorTxBytes, unsignedComplexRemoveValidatorTxBytes)
 
@@ -598,7 +597,7 @@ func TestRemoveSubnetValidatorTxSyntacticVerify(t *testing.T) {
 			name: "invalid subnetAuth",
 			txFunc: func(ctrl *gomock.Controller) *RemoveSubnetValidatorTx {
 				// This SubnetAuth fails verification.
-				invalidSubnetAuth := verify.NewMockVerifiable(ctrl)
+				invalidSubnetAuth := verifymock.NewVerifiable(ctrl)
 				invalidSubnetAuth.EXPECT().Verify().Return(errInvalidSubnetAuth)
 				return &RemoveSubnetValidatorTx{
 					// Set subnetID so we don't error on that check.
@@ -615,7 +614,7 @@ func TestRemoveSubnetValidatorTxSyntacticVerify(t *testing.T) {
 			name: "passes verification",
 			txFunc: func(ctrl *gomock.Controller) *RemoveSubnetValidatorTx {
 				// This SubnetAuth passes verification.
-				validSubnetAuth := verify.NewMockVerifiable(ctrl)
+				validSubnetAuth := verifymock.NewVerifiable(ctrl)
 				validSubnetAuth.EXPECT().Verify().Return(nil)
 				return &RemoveSubnetValidatorTx{
 					// Set subnetID so we don't error on that check.

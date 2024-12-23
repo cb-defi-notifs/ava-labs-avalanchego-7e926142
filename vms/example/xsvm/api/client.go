@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package api
@@ -6,6 +6,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
@@ -15,6 +16,8 @@ import (
 	"github.com/ava-labs/avalanchego/vms/example/xsvm/tx"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 )
+
+const DefaultPollingInterval = 50 * time.Millisecond
 
 // Client defines the xsvm API client.
 type Client interface {
@@ -170,7 +173,7 @@ func (c *client) IssueTx(
 	newTx *tx.Tx,
 	options ...rpc.Option,
 ) (ids.ID, error) {
-	txBytes, err := tx.Codec.Marshal(tx.Version, newTx)
+	txBytes, err := tx.Codec.Marshal(tx.CodecVersion, newTx)
 	if err != nil {
 		return ids.Empty, err
 	}
@@ -240,4 +243,35 @@ func (c *client) Message(
 		return nil, nil, err
 	}
 	return resp.Message, resp.Signature, resp.Message.Initialize()
+}
+
+func AwaitTxAccepted(
+	ctx context.Context,
+	c Client,
+	address ids.ShortID,
+	nonce uint64,
+	freq time.Duration,
+	options ...rpc.Option,
+) error {
+	ticker := time.NewTicker(freq)
+	defer ticker.Stop()
+
+	for {
+		currentNonce, err := c.Nonce(ctx, address, options...)
+		if err != nil {
+			return err
+		}
+
+		if currentNonce > nonce {
+			// The nonce increasing indicates the acceptance of a transaction
+			// issued with the specified nonce.
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }

@@ -29,10 +29,10 @@ fi
 # by default, "./scripts/lint.sh" runs all lint tests
 # to run only "license_header" test
 # TESTS='license_header' ./scripts/lint.sh
-TESTS=${TESTS:-"golangci_lint license_header require_error_is_no_funcs_as_params single_import interface_compliance_nil require_equal_zero require_len_zero require_equal_len require_nil require_no_error_inline_func"}
+TESTS=${TESTS:-"golangci_lint license_header require_error_is_no_funcs_as_params single_import interface_compliance_nil require_no_error_inline_func import_testing_only_in_tests"}
 
 function test_golangci_lint {
-  go install -v github.com/golangci/golangci-lint/cmd/golangci-lint@v1.55.1
+  go install -v github.com/golangci/golangci-lint/cmd/golangci-lint@v1.59.1
   golangci-lint run --config .golangci.yml
 }
 
@@ -43,8 +43,9 @@ _addlicense_flags=${ADDLICENSE_FLAGS:-"--verify --debug"}
 function test_license_header {
   go install -v github.com/palantir/go-license@v1.25.0
   local files=()
-  while IFS= read -r line; do files+=("$line"); done < <(find . -type f -name '*.go' ! -name '*.pb.go' ! -name 'mock_*.go')
+  while IFS= read -r line; do files+=("$line"); done < <(find . -type f -name '*.go' ! -name '*.pb.go' ! -name 'mock_*.go' ! -path './**/*mock/*.go')
 
+  # shellcheck disable=SC2086
   go-license \
   --config=./header.yml \
   ${_addlicense_flags} \
@@ -60,74 +61,6 @@ function test_single_import {
 
 function test_require_error_is_no_funcs_as_params {
   if grep -R -zo -P 'require.ErrorIs\(.+?\)[^\n]*\)\n' .; then
-    echo ""
-    return 1
-  fi
-}
-
-function test_require_equal_zero {
-  # check if the first arg, other than t, is 0
-  if grep -R -o -P 'require\.Equal\((t, )?(u?int\d*\(0\)|0)' .; then
-    echo ""
-    echo "Use require.Zero instead of require.Equal when testing for 0."
-    echo ""
-    return 1
-  fi
-
-  # check if the last arg is 0
-  if grep -R -zo -P 'require\.Equal\(.+?, (u?int\d*\(0\)|0)\)\n' .; then
-    echo ""
-    echo "Use require.Zero instead of require.Equal when testing for 0."
-    echo ""
-    return 1
-  fi
-}
-
-function test_require_len_zero {
-  if grep -R -o -P 'require\.Len\((t, )?.+, 0(,|\))' .; then
-    echo ""
-    echo "Use require.Empty instead of require.Len when testing for 0 length."
-    echo ""
-    return 1
-  fi
-}
-
-function test_require_equal_len {
-  # This should only flag if len(foo) is the *actual* val, not the expected val.
-  #
-  # These should *not* match:
-  # - require.Equal(len(foo), 2)
-  # - require.Equal(t, len(foo), 2)
-  #
-  # These should match:
-  # - require.Equal(2, len(foo))
-  # - require.Equal(t, 2, len(foo))
-  if grep -R -o -P --exclude-dir='scripts' 'require\.Equal\((t, )?.*, len\([^,]*$' .; then
-    echo ""
-    echo "Use require.Len instead of require.Equal when testing for length."
-    echo ""
-    return 1
-  fi
-}
-
-function test_require_nil {
-  if grep -R -o -P 'require\..+?!= nil' .; then
-    echo ""
-    echo "Use require.NotNil when testing for nil inequality."
-    echo ""
-    return 1
-  fi
-
-  if grep -R -o -P 'require\..+?== nil' .; then
-    echo ""
-    echo "Use require.Nil when testing for nil equality."
-    echo ""
-    return 1
-  fi
-
-  if grep -R -o -P 'require\.ErrorIs.+?nil\)' .; then
-    echo ""
-    echo "Use require.NoError instead of require.ErrorIs when testing for nil error."
     echo ""
     return 1
   fi
@@ -151,6 +84,37 @@ function test_interface_compliance_nil {
     echo ""
     return 1
   fi
+}
+
+function test_import_testing_only_in_tests {
+  ROOT=$( git rev-parse --show-toplevel )
+  NON_TEST_GO_FILES=$( find "${ROOT}" -iname '*.go' ! -iname '*_test.go' ! -path "${ROOT}/tests/*" );
+
+  IMPORT_TESTING=$( echo "${NON_TEST_GO_FILES}" | xargs grep -lP '^\s*(import\s+)?"testing"');
+  IMPORT_TESTIFY=$( echo "${NON_TEST_GO_FILES}" | xargs grep -l '"github.com/stretchr/testify');
+  IMPORT_FROM_TESTS=$( echo "${NON_TEST_GO_FILES}" | xargs grep -l '"github.com/ava-labs/avalanchego/tests/');
+  IMPORT_TEST_PKG=$( echo "${NON_TEST_GO_FILES}" | xargs grep -lP '"github.com/ava-labs/avalanchego/.*?test"');
+
+  # TODO(arr4n): send a PR to add support for build tags in `mockgen` and then enable this.
+  # IMPORT_GOMOCK=$( echo "${NON_TEST_GO_FILES}" | xargs grep -l '"go.uber.org/mock');
+  HAVE_TEST_LOGIC=$( printf "%s\n%s\n%s\n%s" "${IMPORT_TESTING}" "${IMPORT_TESTIFY}" "${IMPORT_FROM_TESTS}" "${IMPORT_TEST_PKG}" );
+
+  IN_TEST_PKG=$( echo "${NON_TEST_GO_FILES}" | grep -P '.*test/[^/]+\.go$' ) # directory (hence package name) ends in "test"
+
+  # Files in /tests/ are already excluded by the `find ... ! -path`
+  INTENDED_FOR_TESTING="${IN_TEST_PKG}"
+
+  # -3 suppresses files that have test logic and have the "test" build tag
+  # -2 suppresses files that are tagged despite not having detectable test logic
+  UNTAGGED=$( comm -23 <( echo "${HAVE_TEST_LOGIC}" | sort -u ) <( echo "${INTENDED_FOR_TESTING}" | sort -u ) );
+  if [ -z "${UNTAGGED}" ];
+  then
+    return 0;
+  fi
+
+  echo 'Non-test Go files importing test-only packages MUST (a) be in *test package; or (b) be in /tests/ directory:';
+  echo "${UNTAGGED}";
+  return 1;
 }
 
 function run {

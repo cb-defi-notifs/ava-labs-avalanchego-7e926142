@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package common
@@ -9,13 +9,12 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 
-	oteltrace "go.opentelemetry.io/otel/trace"
-
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/snow"
 	"github.com/ava-labs/avalanchego/trace"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/version"
+
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 var _ Engine = (*tracedEngine)(nil)
@@ -246,7 +245,7 @@ func (e *tracedEngine) PushQuery(ctx context.Context, nodeID ids.NodeID, request
 	return e.engine.PushQuery(ctx, nodeID, requestID, container, requestedHeight)
 }
 
-func (e *tracedEngine) Chits(ctx context.Context, nodeID ids.NodeID, requestID uint32, preferredID ids.ID, preferredIDAtHeight ids.ID, acceptedID ids.ID) error {
+func (e *tracedEngine) Chits(ctx context.Context, nodeID ids.NodeID, requestID uint32, preferredID ids.ID, preferredIDAtHeight ids.ID, acceptedID ids.ID, acceptedHeight uint64) error {
 	ctx, span := e.tracer.Start(ctx, "tracedEngine.Chits", oteltrace.WithAttributes(
 		attribute.Stringer("nodeID", nodeID),
 		attribute.Int64("requestID", int64(requestID)),
@@ -256,7 +255,7 @@ func (e *tracedEngine) Chits(ctx context.Context, nodeID ids.NodeID, requestID u
 	))
 	defer span.End()
 
-	return e.engine.Chits(ctx, nodeID, requestID, preferredID, preferredIDAtHeight, acceptedID)
+	return e.engine.Chits(ctx, nodeID, requestID, preferredID, preferredIDAtHeight, acceptedID, acceptedHeight)
 }
 
 func (e *tracedEngine) QueryFailed(ctx context.Context, nodeID ids.NodeID, requestID uint32) error {
@@ -291,14 +290,14 @@ func (e *tracedEngine) AppResponse(ctx context.Context, nodeID ids.NodeID, reque
 	return e.engine.AppResponse(ctx, nodeID, requestID, response)
 }
 
-func (e *tracedEngine) AppRequestFailed(ctx context.Context, nodeID ids.NodeID, requestID uint32) error {
+func (e *tracedEngine) AppRequestFailed(ctx context.Context, nodeID ids.NodeID, requestID uint32, appErr *AppError) error {
 	ctx, span := e.tracer.Start(ctx, "tracedEngine.AppRequestFailed", oteltrace.WithAttributes(
 		attribute.Stringer("nodeID", nodeID),
 		attribute.Int64("requestID", int64(requestID)),
 	))
 	defer span.End()
 
-	return e.engine.AppRequestFailed(ctx, nodeID, requestID)
+	return e.engine.AppRequestFailed(ctx, nodeID, requestID, appErr)
 }
 
 func (e *tracedEngine) AppGossip(ctx context.Context, nodeID ids.NodeID, msg []byte) error {
@@ -309,38 +308,6 @@ func (e *tracedEngine) AppGossip(ctx context.Context, nodeID ids.NodeID, msg []b
 	defer span.End()
 
 	return e.engine.AppGossip(ctx, nodeID, msg)
-}
-
-func (e *tracedEngine) CrossChainAppRequest(ctx context.Context, chainID ids.ID, requestID uint32, deadline time.Time, request []byte) error {
-	ctx, span := e.tracer.Start(ctx, "tracedEngine.CrossChainAppRequest", oteltrace.WithAttributes(
-		attribute.Stringer("chainID", chainID),
-		attribute.Int64("requestID", int64(requestID)),
-		attribute.Int("requestLen", len(request)),
-	))
-	defer span.End()
-
-	return e.engine.CrossChainAppRequest(ctx, chainID, requestID, deadline, request)
-}
-
-func (e *tracedEngine) CrossChainAppResponse(ctx context.Context, chainID ids.ID, requestID uint32, response []byte) error {
-	ctx, span := e.tracer.Start(ctx, "tracedEngine.CrossChainAppResponse", oteltrace.WithAttributes(
-		attribute.Stringer("chainID", chainID),
-		attribute.Int64("requestID", int64(requestID)),
-		attribute.Int("responseLen", len(response)),
-	))
-	defer span.End()
-
-	return e.engine.CrossChainAppResponse(ctx, chainID, requestID, response)
-}
-
-func (e *tracedEngine) CrossChainAppRequestFailed(ctx context.Context, chainID ids.ID, requestID uint32) error {
-	ctx, span := e.tracer.Start(ctx, "tracedEngine.CrossChainAppRequestFailed", oteltrace.WithAttributes(
-		attribute.Stringer("chainID", chainID),
-		attribute.Int64("requestID", int64(requestID)),
-	))
-	defer span.End()
-
-	return e.engine.CrossChainAppRequestFailed(ctx, chainID, requestID)
 }
 
 func (e *tracedEngine) Connected(ctx context.Context, nodeID ids.NodeID, nodeVersion *version.Application) error {
@@ -362,25 +329,11 @@ func (e *tracedEngine) Disconnected(ctx context.Context, nodeID ids.NodeID) erro
 	return e.engine.Disconnected(ctx, nodeID)
 }
 
-func (e *tracedEngine) Timeout(ctx context.Context) error {
-	ctx, span := e.tracer.Start(ctx, "tracedEngine.Timeout")
-	defer span.End()
-
-	return e.engine.Timeout(ctx)
-}
-
 func (e *tracedEngine) Gossip(ctx context.Context) error {
 	ctx, span := e.tracer.Start(ctx, "tracedEngine.Gossip")
 	defer span.End()
 
 	return e.engine.Gossip(ctx)
-}
-
-func (e *tracedEngine) Halt(ctx context.Context) {
-	ctx, span := e.tracer.Start(ctx, "tracedEngine.Halt")
-	defer span.End()
-
-	e.engine.Halt(ctx)
 }
 
 func (e *tracedEngine) Shutdown(ctx context.Context) error {
@@ -397,10 +350,6 @@ func (e *tracedEngine) Notify(ctx context.Context, msg Message) error {
 	defer span.End()
 
 	return e.engine.Notify(ctx, msg)
-}
-
-func (e *tracedEngine) Context() *snow.ConsensusContext {
-	return e.engine.Context()
 }
 
 func (e *tracedEngine) Start(ctx context.Context, startReqID uint32) error {

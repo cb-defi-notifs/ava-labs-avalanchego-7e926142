@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package reward
@@ -78,7 +78,7 @@ func Split(totalAmount uint64, shares uint32) (uint64, uint64) {
 	remainderAmount := remainderShares * (totalAmount / PercentDenominator)
 
 	// Delay rounding as long as possible for small numbers
-	if optimisticReward, err := math.Mul64(remainderShares, totalAmount); err == nil {
+	if optimisticReward, err := math.Mul(remainderShares, totalAmount); err == nil {
 		remainderAmount = optimisticReward / PercentDenominator
 	}
 

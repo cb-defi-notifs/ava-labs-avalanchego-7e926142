@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package tracker
@@ -8,14 +8,13 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/stretchr/testify/require"
-
 	"go.uber.org/mock/gomock"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/math/meter"
 	"github.com/ava-labs/avalanchego/utils/resource"
+	"github.com/ava-labs/avalanchego/utils/resource/resourcemock"
 )
 
 func TestNewCPUTracker(t *testing.T) {
@@ -42,7 +41,7 @@ func TestCPUTracker(t *testing.T) {
 	halflife := 5 * time.Second
 
 	ctrl := gomock.NewController(t)
-	mockUser := resource.NewMockUser(ctrl)
+	mockUser := resourcemock.NewUser(ctrl)
 	mockUser.EXPECT().CPUUsage().Return(1.0).Times(3)
 
 	tracker, err := NewResourceTracker(prometheus.NewRegistry(), mockUser, meter.ContinuousFactory{}, time.Second)

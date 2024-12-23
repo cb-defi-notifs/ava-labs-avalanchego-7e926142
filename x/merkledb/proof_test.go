@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package merkledb
@@ -23,8 +23,8 @@ import (
 
 func Test_Proof_Empty(t *testing.T) {
 	proof := &Proof{}
-	err := proof.Verify(context.Background(), ids.Empty, 4)
-	require.ErrorIs(t, err, ErrNoProof)
+	err := proof.Verify(context.Background(), ids.Empty, 4, DefaultHasher)
+	require.ErrorIs(t, err, ErrEmptyProof)
 }
 
 func Test_Proof_Simple(t *testing.T) {
@@ -43,7 +43,7 @@ func Test_Proof_Simple(t *testing.T) {
 	proof, err := db.GetProof(ctx, []byte{})
 	require.NoError(err)
 
-	require.NoError(proof.Verify(ctx, expectedRoot, 4))
+	require.NoError(proof.Verify(ctx, expectedRoot, db.tokenSize, db.hasher))
 }
 
 func Test_Proof_Verify_Bad_Data(t *testing.T) {
@@ -56,8 +56,15 @@ func Test_Proof_Verify_Bad_Data(t *testing.T) {
 	tests := []test{
 		{
 			name:        "happyPath",
-			malform:     func(proof *Proof) {},
+			malform:     func(*Proof) {},
 			expectedErr: nil,
+		},
+		{
+			name: "empty",
+			malform: func(proof *Proof) {
+				proof.Path = nil
+			},
+			expectedErr: ErrEmptyProof,
 		},
 		{
 			name: "odd length key path with value",
@@ -112,7 +119,7 @@ func Test_Proof_Verify_Bad_Data(t *testing.T) {
 
 			tt.malform(proof)
 
-			err = proof.Verify(context.Background(), db.getMerkleRoot(), 4)
+			err = proof.Verify(context.Background(), db.getMerkleRoot(), db.tokenSize, db.hasher)
 			require.ErrorIs(err, tt.expectedErr)
 		})
 	}
@@ -121,14 +128,14 @@ func Test_Proof_Verify_Bad_Data(t *testing.T) {
 func Test_Proof_ValueOrHashMatches(t *testing.T) {
 	require := require.New(t)
 
-	require.True(valueOrHashMatches(maybe.Some([]byte{0}), maybe.Some([]byte{0})))
-	require.False(valueOrHashMatches(maybe.Nothing[[]byte](), maybe.Some(hashing.ComputeHash256([]byte{0}))))
-	require.True(valueOrHashMatches(maybe.Nothing[[]byte](), maybe.Nothing[[]byte]()))
+	require.True(valueOrHashMatches(SHA256Hasher, maybe.Some([]byte{0}), maybe.Some([]byte{0})))
+	require.False(valueOrHashMatches(SHA256Hasher, maybe.Nothing[[]byte](), maybe.Some(hashing.ComputeHash256([]byte{0}))))
+	require.True(valueOrHashMatches(SHA256Hasher, maybe.Nothing[[]byte](), maybe.Nothing[[]byte]()))
 
-	require.False(valueOrHashMatches(maybe.Some([]byte{0}), maybe.Nothing[[]byte]()))
-	require.False(valueOrHashMatches(maybe.Nothing[[]byte](), maybe.Some([]byte{0})))
-	require.False(valueOrHashMatches(maybe.Nothing[[]byte](), maybe.Some(hashing.ComputeHash256([]byte{1}))))
-	require.False(valueOrHashMatches(maybe.Some(hashing.ComputeHash256([]byte{0})), maybe.Nothing[[]byte]()))
+	require.False(valueOrHashMatches(SHA256Hasher, maybe.Some([]byte{0}), maybe.Nothing[[]byte]()))
+	require.False(valueOrHashMatches(SHA256Hasher, maybe.Nothing[[]byte](), maybe.Some([]byte{0})))
+	require.False(valueOrHashMatches(SHA256Hasher, maybe.Nothing[[]byte](), maybe.Some(hashing.ComputeHash256([]byte{1}))))
+	require.False(valueOrHashMatches(SHA256Hasher, maybe.Some(hashing.ComputeHash256([]byte{0})), maybe.Nothing[[]byte]()))
 }
 
 func Test_RangeProof_Extra_Value(t *testing.T) {
@@ -150,8 +157,9 @@ func Test_RangeProof_Extra_Value(t *testing.T) {
 		context.Background(),
 		maybe.Some([]byte{1}),
 		maybe.Some([]byte{5, 5}),
-		db.getMerkleRoot(),
+		db.rootID,
 		db.tokenSize,
+		db.hasher,
 	))
 
 	proof.KeyValues = append(proof.KeyValues, KeyValue{Key: []byte{5}, Value: []byte{5}})
@@ -160,8 +168,9 @@ func Test_RangeProof_Extra_Value(t *testing.T) {
 		context.Background(),
 		maybe.Some([]byte{1}),
 		maybe.Some([]byte{5, 5}),
-		db.getMerkleRoot(),
+		db.rootID,
 		db.tokenSize,
+		db.hasher,
 	)
 	require.ErrorIs(err, ErrInvalidProof)
 }
@@ -176,8 +185,17 @@ func Test_RangeProof_Verify_Bad_Data(t *testing.T) {
 	tests := []test{
 		{
 			name:        "happyPath",
-			malform:     func(proof *RangeProof) {},
+			malform:     func(*RangeProof) {},
 			expectedErr: nil,
+		},
+		{
+			name: "empty",
+			malform: func(proof *RangeProof) {
+				proof.KeyValues = nil
+				proof.StartProof = nil
+				proof.EndProof = nil
+			},
+			expectedErr: ErrEmptyProof,
 		},
 		{
 			name: "StartProof: last proof node has missing value",
@@ -223,7 +241,7 @@ func Test_RangeProof_Verify_Bad_Data(t *testing.T) {
 
 			tt.malform(proof)
 
-			err = proof.Verify(context.Background(), maybe.Some([]byte{2}), maybe.Some([]byte{3, 0}), db.getMerkleRoot(), db.tokenSize)
+			err = proof.Verify(context.Background(), maybe.Some([]byte{2}), maybe.Some([]byte{3, 0}), db.getMerkleRoot(), db.tokenSize, db.hasher)
 			require.ErrorIs(err, tt.expectedErr)
 		})
 	}
@@ -276,17 +294,18 @@ func Test_Proof(t *testing.T) {
 
 	require.Equal(ToKey([]byte("key")), proof.Path[0].Key)
 	require.Equal(maybe.Some([]byte("value")), proof.Path[0].ValueOrHash)
+	require.Equal(ToKey([]byte("key0")).Take(28), proof.Path[1].Key)
+	require.True(proof.Path[1].ValueOrHash.IsNothing()) // intermediate node
 	require.Equal(ToKey([]byte("key1")), proof.Path[2].Key)
 	require.Equal(maybe.Some([]byte("value1")), proof.Path[2].ValueOrHash)
 
 	expectedRootID, err := trie.GetMerkleRoot(context.Background())
 	require.NoError(err)
-	require.NoError(proof.Verify(context.Background(), expectedRootID, dbTrie.tokenSize))
+	require.NoError(proof.Verify(context.Background(), expectedRootID, dbTrie.tokenSize, dbTrie.hasher))
 
-	proof.Path[0].ValueOrHash = maybe.Some([]byte("value2"))
-
-	err = proof.Verify(context.Background(), expectedRootID, dbTrie.tokenSize)
-	require.ErrorIs(err, ErrInvalidProof)
+	proof.Path[0].Key = ToKey([]byte("key1"))
+	err = proof.Verify(context.Background(), expectedRootID, dbTrie.tokenSize, dbTrie.hasher)
+	require.ErrorIs(err, ErrProofNodeNotForKey)
 }
 
 func Test_RangeProof_Syntactic_Verify(t *testing.T) {
@@ -307,11 +326,11 @@ func Test_RangeProof_Syntactic_Verify(t *testing.T) {
 			expectedErr: ErrStartAfterEnd,
 		},
 		{
-			name:        "empty", // Also tests start can be > end if end is nil
+			name:        "empty",
 			start:       maybe.Some([]byte{1}),
 			end:         maybe.Nothing[[]byte](),
 			proof:       &RangeProof{},
-			expectedErr: ErrNoMerkleProof,
+			expectedErr: ErrEmptyProof,
 		},
 		{
 			name:  "unexpected end proof",
@@ -322,15 +341,6 @@ func Test_RangeProof_Syntactic_Verify(t *testing.T) {
 				EndProof:   []ProofNode{{}},
 			},
 			expectedErr: ErrUnexpectedEndProof,
-		},
-		{
-			name:  "should just be root",
-			start: maybe.Nothing[[]byte](),
-			end:   maybe.Nothing[[]byte](),
-			proof: &RangeProof{
-				EndProof: []ProofNode{{}, {}},
-			},
-			expectedErr: ErrShouldJustBeRoot,
 		},
 		{
 			name:  "no end proof; has end bound",
@@ -475,7 +485,7 @@ func Test_RangeProof_Syntactic_Verify(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.proof.Verify(context.Background(), tt.start, tt.end, ids.Empty, 4)
+			err := tt.proof.Verify(context.Background(), tt.start, tt.end, ids.Empty, 4, DefaultHasher)
 			require.ErrorIs(t, err, tt.expectedErr)
 		})
 	}
@@ -501,7 +511,9 @@ func Test_RangeProof(t *testing.T) {
 	require.Equal([]byte{2}, proof.KeyValues[1].Value)
 	require.Equal([]byte{3}, proof.KeyValues[2].Value)
 
+	require.Len(proof.EndProof, 2)
 	require.Equal([]byte{0}, proof.EndProof[0].Key.Bytes())
+	require.Len(proof.EndProof[0].Children, 5) // 0,1,2,3,4
 	require.Equal([]byte{3}, proof.EndProof[1].Key.Bytes())
 
 	// only a single node here since others are duplicates in endproof
@@ -511,8 +523,9 @@ func Test_RangeProof(t *testing.T) {
 		context.Background(),
 		maybe.Some([]byte{1}),
 		maybe.Some([]byte{3, 5}),
-		db.getMerkleRoot(),
+		db.rootID,
 		db.tokenSize,
+		db.hasher,
 	))
 }
 
@@ -521,6 +534,8 @@ func Test_RangeProof_BadBounds(t *testing.T) {
 
 	db, err := getBasicDB()
 	require.NoError(err)
+
+	require.NoError(db.Put(nil, nil))
 
 	// non-nil start/end
 	proof, err := db.GetRangeProof(context.Background(), maybe.Some([]byte{4}), maybe.Some([]byte{3}), 50)
@@ -556,15 +571,16 @@ func Test_RangeProof_NilStart(t *testing.T) {
 	require.Equal([]byte("value1"), proof.KeyValues[0].Value)
 	require.Equal([]byte("value2"), proof.KeyValues[1].Value)
 
-	require.Equal(ToKey([]byte("key2")), proof.EndProof[1].Key)
+	require.Equal(ToKey([]byte("key2")), proof.EndProof[1].Key, db.tokenSize)
 	require.Equal(ToKey([]byte("key2")).Take(28), proof.EndProof[0].Key)
 
 	require.NoError(proof.Verify(
 		context.Background(),
 		maybe.Nothing[[]byte](),
 		maybe.Some([]byte("key35")),
-		db.getMerkleRoot(),
+		db.rootID,
 		db.tokenSize,
+		db.hasher,
 	))
 }
 
@@ -573,10 +589,16 @@ func Test_RangeProof_NilEnd(t *testing.T) {
 
 	db, err := getBasicDB()
 	require.NoError(err)
+
 	writeBasicBatch(t, db)
 	require.NoError(err)
 
-	proof, err := db.GetRangeProof(context.Background(), maybe.Some([]byte{1}), maybe.Nothing[[]byte](), 2)
+	proof, err := db.GetRangeProof( // Should have keys [1], [2]
+		context.Background(),
+		maybe.Some([]byte{1}),
+		maybe.Nothing[[]byte](),
+		2,
+	)
 	require.NoError(err)
 	require.NotNil(proof)
 
@@ -590,15 +612,16 @@ func Test_RangeProof_NilEnd(t *testing.T) {
 
 	require.Equal([]byte{1}, proof.StartProof[0].Key.Bytes())
 
-	require.Equal([]byte{0}, proof.EndProof[0].Key.Bytes())
+	require.Equal(db.root.Value().key, proof.EndProof[0].Key)
 	require.Equal([]byte{2}, proof.EndProof[1].Key.Bytes())
 
 	require.NoError(proof.Verify(
 		context.Background(),
 		maybe.Some([]byte{1}),
 		maybe.Nothing[[]byte](),
-		db.getMerkleRoot(),
+		db.rootID,
 		db.tokenSize,
+		db.hasher,
 	))
 }
 
@@ -633,28 +656,69 @@ func Test_RangeProof_EmptyValues(t *testing.T) {
 	require.Equal(ToKey([]byte("key1")), proof.StartProof[0].Key)
 
 	require.Len(proof.EndProof, 2)
-	require.Equal(ToKey([]byte("key2")), proof.EndProof[1].Key)
-	require.Equal(ToKey([]byte("key2")).Take(28), proof.EndProof[0].Key)
+	require.Equal(ToKey([]byte("key1")).Take(28), proof.EndProof[0].Key, db.tokenSize) // root
+	require.Equal(ToKey([]byte("key2")), proof.EndProof[1].Key, db.tokenSize)
 
 	require.NoError(proof.Verify(
 		context.Background(),
 		maybe.Some([]byte("key1")),
 		maybe.Some([]byte("key2")),
-		db.getMerkleRoot(),
+		db.rootID,
 		db.tokenSize,
+		db.hasher,
 	))
 }
 
 func Test_ChangeProof_Missing_History_For_EndRoot(t *testing.T) {
 	require := require.New(t)
+	seed := time.Now().UnixNano()
+	t.Logf("Seed: %d", seed)
+	rand := rand.New(rand.NewSource(seed)) // #nosec G404
 
 	db, err := getBasicDB()
 	require.NoError(err)
-	startRoot, err := db.GetMerkleRoot(context.Background())
-	require.NoError(err)
 
-	_, err = db.GetChangeProof(context.Background(), startRoot, ids.Empty, maybe.Nothing[[]byte](), maybe.Nothing[[]byte](), 50)
+	roots := []ids.ID{}
+	for i := 0; i < defaultHistoryLength+1; i++ {
+		key := make([]byte, 16)
+		_, _ = rand.Read(key)
+		require.NoError(db.Put(key, nil))
+		root, err := db.GetMerkleRoot(context.Background())
+		require.NoError(err)
+		roots = append(roots, root)
+	}
+
+	_, err = db.GetChangeProof(
+		context.Background(),
+		roots[len(roots)-1],
+		ids.GenerateTestID(),
+		maybe.Nothing[[]byte](),
+		maybe.Nothing[[]byte](),
+		50,
+	)
+	require.ErrorIs(err, ErrNoEndRoot)
 	require.ErrorIs(err, ErrInsufficientHistory)
+
+	_, err = db.GetChangeProof(
+		context.Background(),
+		roots[0],
+		roots[len(roots)-1],
+		maybe.Nothing[[]byte](),
+		maybe.Nothing[[]byte](),
+		50,
+	)
+	require.NotErrorIs(err, ErrNoEndRoot)
+	require.ErrorIs(err, ErrInsufficientHistory)
+
+	_, err = db.GetChangeProof(
+		context.Background(),
+		roots[1],
+		roots[len(roots)-1],
+		maybe.Nothing[[]byte](),
+		maybe.Nothing[[]byte](),
+		50,
+	)
+	require.NoError(err)
 }
 
 func Test_ChangeProof_BadBounds(t *testing.T) {
@@ -770,7 +834,7 @@ func Test_ChangeProof_Verify_Bad_Data(t *testing.T) {
 	tests := []test{
 		{
 			name:        "happyPath",
-			malform:     func(proof *ChangeProof) {},
+			malform:     func(*ChangeProof) {},
 			expectedErr: nil,
 		},
 		{
@@ -815,13 +879,26 @@ func Test_ChangeProof_Verify_Bad_Data(t *testing.T) {
 			dbClone, err := getBasicDB()
 			require.NoError(err)
 
-			proof, err := db.GetChangeProof(context.Background(), startRoot, endRoot, maybe.Some([]byte{2}), maybe.Some([]byte{3, 0}), 50)
+			proof, err := db.GetChangeProof(
+				context.Background(),
+				startRoot,
+				endRoot,
+				maybe.Some([]byte{2}),
+				maybe.Some([]byte{3, 0}),
+				50,
+			)
 			require.NoError(err)
 			require.NotNil(proof)
 
 			tt.malform(proof)
 
-			err = dbClone.VerifyChangeProof(context.Background(), proof, maybe.Some([]byte{2}), maybe.Some([]byte{3, 0}), db.getMerkleRoot())
+			err = dbClone.VerifyChangeProof(
+				context.Background(),
+				proof,
+				maybe.Some([]byte{2}),
+				maybe.Some([]byte{3, 0}),
+				db.getMerkleRoot(),
+			)
 			require.ErrorIs(err, tt.expectedErr)
 		})
 	}
@@ -849,7 +926,7 @@ func Test_ChangeProof_Syntactic_Verify(t *testing.T) {
 			proof:       &ChangeProof{},
 			start:       maybe.Nothing[[]byte](),
 			end:         maybe.Nothing[[]byte](),
-			expectedErr: ErrNoMerkleProof,
+			expectedErr: ErrEmptyProof,
 		},
 		{
 			name: "no end proof",
@@ -1626,6 +1703,9 @@ func FuzzRangeProofInvariants(f *testing.F) {
 		if maxProofLen == 0 {
 			t.SkipNow()
 		}
+		if numKeyValues == 0 {
+			t.SkipNow()
+		}
 
 		// Make sure proof bounds are valid
 		if len(endBytes) != 0 && bytes.Compare(startBytes, endBytes) > 0 {
@@ -1656,15 +1736,19 @@ func FuzzRangeProofInvariants(f *testing.F) {
 			end = maybe.Some(endBytes)
 		}
 
+		rootID, err := db.GetMerkleRoot(context.Background())
+		require.NoError(err)
+
 		rangeProof, err := db.GetRangeProof(
 			context.Background(),
 			start,
 			end,
 			int(maxProofLen),
 		)
-		require.NoError(err)
-
-		rootID, err := db.GetMerkleRoot(context.Background())
+		if rootID == ids.Empty {
+			require.ErrorIs(err, ErrEmptyProof)
+			return
+		}
 		require.NoError(err)
 
 		require.NoError(rangeProof.Verify(
@@ -1673,6 +1757,7 @@ func FuzzRangeProofInvariants(f *testing.F) {
 			end,
 			rootID,
 			db.tokenSize,
+			db.hasher,
 		))
 
 		// Make sure the start proof doesn't contain any nodes
@@ -1718,7 +1803,7 @@ func FuzzRangeProofInvariants(f *testing.F) {
 			rootID, err := db.GetMerkleRoot(context.Background())
 			require.NoError(err)
 
-			require.NoError(proof.Verify(context.Background(), rootID, db.tokenSize))
+			require.NoError(proof.Verify(context.Background(), rootID, db.tokenSize, db.hasher))
 		default:
 			require.NotEmpty(rangeProof.EndProof)
 
@@ -1733,7 +1818,7 @@ func FuzzRangeProofInvariants(f *testing.F) {
 			rootID, err := db.GetMerkleRoot(context.Background())
 			require.NoError(err)
 
-			require.NoError(proof.Verify(context.Background(), rootID, db.tokenSize))
+			require.NoError(proof.Verify(context.Background(), rootID, db.tokenSize, db.hasher))
 		}
 	})
 }
@@ -1760,16 +1845,21 @@ func FuzzProofVerification(f *testing.F) {
 			deletePortion,
 		)
 
+		if db.getMerkleRoot() == ids.Empty {
+			return
+		}
+
 		proof, err := db.GetProof(
 			context.Background(),
 			key,
 		)
+
 		require.NoError(err)
 
 		rootID, err := db.GetMerkleRoot(context.Background())
 		require.NoError(err)
 
-		require.NoError(proof.Verify(context.Background(), rootID, db.tokenSize))
+		require.NoError(proof.Verify(context.Background(), rootID, db.tokenSize, db.hasher))
 
 		// Insert a new key-value pair
 		newKey := make([]byte, 32)

@@ -1,15 +1,12 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package tracedvm
 
 import (
 	"context"
-	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
-
-	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/ava-labs/avalanchego/database"
 	"github.com/ava-labs/avalanchego/ids"
@@ -18,6 +15,8 @@ import (
 	"github.com/ava-labs/avalanchego/snow/engine/common"
 	"github.com/ava-labs/avalanchego/snow/engine/snowman/block"
 	"github.com/ava-labs/avalanchego/trace"
+
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -51,7 +50,6 @@ type blockVM struct {
 	getAncestorsTag      string
 	batchedParseBlockTag string
 	// HeightIndexedChainVM tags
-	verifyHeightIndexTag  string
 	getBlockIDAtHeightTag string
 	// StateSyncableVM tags
 	stateSyncEnabledTag           string
@@ -71,28 +69,27 @@ func NewBlockVM(vm block.ChainVM, name string, tracer trace.Tracer) block.ChainV
 		buildBlockVM:                  buildBlockVM,
 		batchedVM:                     batchedVM,
 		ssVM:                          ssVM,
-		initializeTag:                 fmt.Sprintf("%s.initialize", name),
-		buildBlockTag:                 fmt.Sprintf("%s.buildBlock", name),
-		parseBlockTag:                 fmt.Sprintf("%s.parseBlock", name),
-		getBlockTag:                   fmt.Sprintf("%s.getBlock", name),
-		setPreferenceTag:              fmt.Sprintf("%s.setPreference", name),
-		lastAcceptedTag:               fmt.Sprintf("%s.lastAccepted", name),
-		verifyTag:                     fmt.Sprintf("%s.verify", name),
-		acceptTag:                     fmt.Sprintf("%s.accept", name),
-		rejectTag:                     fmt.Sprintf("%s.reject", name),
-		optionsTag:                    fmt.Sprintf("%s.options", name),
-		shouldVerifyWithContextTag:    fmt.Sprintf("%s.shouldVerifyWithContext", name),
-		verifyWithContextTag:          fmt.Sprintf("%s.verifyWithContext", name),
-		buildBlockWithContextTag:      fmt.Sprintf("%s.buildBlockWithContext", name),
-		getAncestorsTag:               fmt.Sprintf("%s.getAncestors", name),
-		batchedParseBlockTag:          fmt.Sprintf("%s.batchedParseBlock", name),
-		verifyHeightIndexTag:          fmt.Sprintf("%s.verifyHeightIndex", name),
-		getBlockIDAtHeightTag:         fmt.Sprintf("%s.getBlockIDAtHeight", name),
-		stateSyncEnabledTag:           fmt.Sprintf("%s.stateSyncEnabled", name),
-		getOngoingSyncStateSummaryTag: fmt.Sprintf("%s.getOngoingSyncStateSummary", name),
-		getLastStateSummaryTag:        fmt.Sprintf("%s.getLastStateSummary", name),
-		parseStateSummaryTag:          fmt.Sprintf("%s.parseStateSummary", name),
-		getStateSummaryTag:            fmt.Sprintf("%s.getStateSummary", name),
+		initializeTag:                 name + ".initialize",
+		buildBlockTag:                 name + ".buildBlock",
+		parseBlockTag:                 name + ".parseBlock",
+		getBlockTag:                   name + ".getBlock",
+		setPreferenceTag:              name + ".setPreference",
+		lastAcceptedTag:               name + ".lastAccepted",
+		verifyTag:                     name + ".verify",
+		acceptTag:                     name + ".accept",
+		rejectTag:                     name + ".reject",
+		optionsTag:                    name + ".options",
+		shouldVerifyWithContextTag:    name + ".shouldVerifyWithContext",
+		verifyWithContextTag:          name + ".verifyWithContext",
+		buildBlockWithContextTag:      name + ".buildBlockWithContext",
+		getAncestorsTag:               name + ".getAncestors",
+		batchedParseBlockTag:          name + ".batchedParseBlock",
+		getBlockIDAtHeightTag:         name + ".getBlockIDAtHeight",
+		stateSyncEnabledTag:           name + ".stateSyncEnabled",
+		getOngoingSyncStateSummaryTag: name + ".getOngoingSyncStateSummary",
+		getLastStateSummaryTag:        name + ".getLastStateSummary",
+		parseStateSummaryTag:          name + ".parseStateSummary",
+		getStateSummaryTag:            name + ".getStateSummary",
 		tracer:                        tracer,
 	}
 }
@@ -175,13 +172,6 @@ func (vm *blockVM) LastAccepted(ctx context.Context) (ids.ID, error) {
 	defer span.End()
 
 	return vm.ChainVM.LastAccepted(ctx)
-}
-
-func (vm *blockVM) VerifyHeightIndex(ctx context.Context) error {
-	ctx, span := vm.tracer.Start(ctx, vm.verifyHeightIndexTag)
-	defer span.End()
-
-	return vm.ChainVM.VerifyHeightIndex(ctx)
 }
 
 func (vm *blockVM) GetBlockIDAtHeight(ctx context.Context, height uint64) (ids.ID, error) {

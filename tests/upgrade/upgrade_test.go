@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package upgrade
@@ -6,21 +6,16 @@ package upgrade
 import (
 	"flag"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/onsi/ginkgo/v2"
-
-	"github.com/onsi/gomega"
-
 	"github.com/stretchr/testify/require"
 
-	"github.com/ava-labs/avalanchego/config"
 	"github.com/ava-labs/avalanchego/tests/fixture/e2e"
+	"github.com/ava-labs/avalanchego/tests/fixture/tmpnet"
 )
 
 func TestUpgrade(t *testing.T) {
-	gomega.RegisterFailHandler(ginkgo.Fail)
 	ginkgo.RunSpecs(t, "upgrade test suites")
 }
 
@@ -45,36 +40,40 @@ func init() {
 }
 
 var _ = ginkgo.Describe("[Upgrade]", func() {
-	require := require.New(ginkgo.GinkgoT())
+	tc := e2e.NewTestContext()
+	require := require.New(tc)
 
 	ginkgo.It("can upgrade versions", func() {
-		// TODO(marun) How many nodes should the target network have to best validate upgrade?
-		network := e2e.StartLocalNetwork(avalancheGoExecPath, e2e.DefaultNetworkDir)
+		network := tmpnet.NewDefaultNetwork("avalanchego-upgrade")
 
-		ginkgo.By(fmt.Sprintf("restarting all nodes with %q binary", avalancheGoExecPathToUpgradeTo))
+		// Get the default genesis so we can modify it
+		genesis, err := network.DefaultGenesis()
+		require.NoError(err)
+		network.Genesis = genesis
+
+		e2e.StartNetwork(
+			tc,
+			network,
+			avalancheGoExecPath,
+			"",    /* pluginDir */
+			0,     /* shutdownDelay */
+			false, /* skipShutdown */
+			false, /* reuseNetwork */
+		)
+
+		tc.By(fmt.Sprintf("restarting all nodes with %q binary", avalancheGoExecPathToUpgradeTo))
 		for _, node := range network.Nodes {
-			ginkgo.By(fmt.Sprintf("restarting node %q with %q binary", node.GetID(), avalancheGoExecPathToUpgradeTo))
-			require.NoError(node.Stop())
+			tc.By(fmt.Sprintf("restarting node %q with %q binary", node.NodeID, avalancheGoExecPathToUpgradeTo))
+			require.NoError(node.Stop(tc.DefaultContext()))
 
-			// A node must start with sufficient bootstrap nodes to represent a quorum. Since the node's current
-			// bootstrap configuration may not satisfy this requirement (i.e. if on network start the node was one of
-			// the first validators), updating the node to bootstrap from all running validators maximizes the
-			// chances of a successful start.
-			//
-			// TODO(marun) Refactor node start to do this automatically
-			bootstrapIPs, bootstrapIDs, err := network.GetBootstrapIPsAndIDs()
-			require.NoError(err)
-			require.NotEmpty(bootstrapIDs)
-			node.Flags[config.BootstrapIDsKey] = strings.Join(bootstrapIDs, ",")
-			node.Flags[config.BootstrapIPsKey] = strings.Join(bootstrapIPs, ",")
-			require.NoError(node.WriteConfig())
+			node.RuntimeConfig.AvalancheGoPath = avalancheGoExecPathToUpgradeTo
 
-			require.NoError(node.Start(ginkgo.GinkgoWriter, avalancheGoExecPath))
+			require.NoError(network.StartNode(tc.DefaultContext(), tc.Log(), node))
 
-			ginkgo.By(fmt.Sprintf("waiting for node %q to report healthy after restart", node.GetID()))
-			e2e.WaitForHealthy(node)
+			tc.By(fmt.Sprintf("waiting for node %q to report healthy after restart", node.NodeID))
+			e2e.WaitForHealthy(tc, node)
 		}
 
-		e2e.CheckBootstrapIsPossible(network)
+		_ = e2e.CheckBootstrapIsPossible(tc, network)
 	})
 })

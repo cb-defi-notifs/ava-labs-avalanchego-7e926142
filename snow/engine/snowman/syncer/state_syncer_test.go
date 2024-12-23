@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package syncer
@@ -12,21 +12,20 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/stretchr/testify/require"
 
 	"github.com/ava-labs/avalanchego/database"
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/snow"
 	"github.com/ava-labs/avalanchego/snow/engine/common"
 	"github.com/ava-labs/avalanchego/snow/engine/common/tracker"
+	"github.com/ava-labs/avalanchego/snow/engine/enginetest"
 	"github.com/ava-labs/avalanchego/snow/engine/snowman/block"
+	"github.com/ava-labs/avalanchego/snow/engine/snowman/block/blocktest"
 	"github.com/ava-labs/avalanchego/snow/engine/snowman/getter"
+	"github.com/ava-labs/avalanchego/snow/snowtest"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/set"
 	"github.com/ava-labs/avalanchego/version"
-
-	safemath "github.com/ava-labs/avalanchego/utils/math"
 )
 
 var (
@@ -39,12 +38,13 @@ func TestStateSyncerIsEnabledIfVMSupportsStateSyncing(t *testing.T) {
 	require := require.New(t)
 
 	// Build state syncer
-	ctx := snow.DefaultConsensusContextTest()
-	sender := &common.SenderTest{T: t}
+	snowCtx := snowtest.Context(t, snowtest.CChainID)
+	ctx := snowtest.ConsensusContext(snowCtx)
+	sender := &enginetest.Sender{T: t}
 
 	// Non state syncableVM case
-	nonStateSyncableVM := &block.TestVM{
-		TestVM: common.TestVM{T: t},
+	nonStateSyncableVM := &blocktest.VM{
+		VM: enginetest.VM{T: t},
 	}
 	dummyGetter, err := getter.New(
 		nonStateSyncableVM,
@@ -68,10 +68,10 @@ func TestStateSyncerIsEnabledIfVMSupportsStateSyncing(t *testing.T) {
 
 	// State syncableVM case
 	fullVM := &fullVM{
-		TestVM: &block.TestVM{
-			TestVM: common.TestVM{T: t},
+		VM: &blocktest.VM{
+			VM: enginetest.VM{T: t},
 		},
-		TestStateSyncableVM: &block.TestStateSyncableVM{
+		StateSyncableVM: &blocktest.StateSyncableVM{
 			T: t,
 		},
 	}
@@ -109,7 +109,8 @@ func TestStateSyncerIsEnabledIfVMSupportsStateSyncing(t *testing.T) {
 
 func TestStateSyncingStartsOnlyIfEnoughStakeIsConnected(t *testing.T) {
 	require := require.New(t)
-	ctx := snow.DefaultConsensusContextTest()
+	snowCtx := snowtest.Context(t, snowtest.CChainID)
+	ctx := snowtest.ConsensusContext(snowCtx)
 	beacons := buildTestPeers(t, ctx.SubnetID)
 	alpha, err := beacons.TotalWeight(ctx.SubnetID)
 	require.NoError(err)
@@ -117,7 +118,7 @@ func TestStateSyncingStartsOnlyIfEnoughStakeIsConnected(t *testing.T) {
 
 	peers := tracker.NewPeers()
 	startup := tracker.NewStartup(peers, startupAlpha)
-	beacons.RegisterCallbackListener(ctx.SubnetID, startup)
+	beacons.RegisterSetCallbackListener(ctx.SubnetID, startup)
 
 	syncer, _, sender := buildTestsObjects(t, ctx, startup, beacons, alpha)
 
@@ -151,7 +152,8 @@ func TestStateSyncingStartsOnlyIfEnoughStakeIsConnected(t *testing.T) {
 
 func TestStateSyncLocalSummaryIsIncludedAmongFrontiersIfAvailable(t *testing.T) {
 	require := require.New(t)
-	ctx := snow.DefaultConsensusContextTest()
+	snowCtx := snowtest.Context(t, snowtest.CChainID)
+	ctx := snowtest.ConsensusContext(snowCtx)
 	beacons := buildTestPeers(t, ctx.SubnetID)
 	totalWeight, err := beacons.TotalWeight(ctx.SubnetID)
 	require.NoError(err)
@@ -159,12 +161,12 @@ func TestStateSyncLocalSummaryIsIncludedAmongFrontiersIfAvailable(t *testing.T) 
 
 	peers := tracker.NewPeers()
 	startup := tracker.NewStartup(peers, startupAlpha)
-	beacons.RegisterCallbackListener(ctx.SubnetID, startup)
+	beacons.RegisterSetCallbackListener(ctx.SubnetID, startup)
 
 	syncer, fullVM, _ := buildTestsObjects(t, ctx, startup, beacons, (totalWeight+1)/2)
 
 	// mock VM to simulate a valid summary is returned
-	localSummary := &block.TestStateSummary{
+	localSummary := &blocktest.StateSummary{
 		HeightV: 2000,
 		IDV:     summaryID,
 		BytesV:  summaryBytes,
@@ -188,7 +190,8 @@ func TestStateSyncLocalSummaryIsIncludedAmongFrontiersIfAvailable(t *testing.T) 
 
 func TestStateSyncNotFoundOngoingSummaryIsNotIncludedAmongFrontiers(t *testing.T) {
 	require := require.New(t)
-	ctx := snow.DefaultConsensusContextTest()
+	snowCtx := snowtest.Context(t, snowtest.CChainID)
+	ctx := snowtest.ConsensusContext(snowCtx)
 	beacons := buildTestPeers(t, ctx.SubnetID)
 	totalWeight, err := beacons.TotalWeight(ctx.SubnetID)
 	require.NoError(err)
@@ -196,7 +199,7 @@ func TestStateSyncNotFoundOngoingSummaryIsNotIncludedAmongFrontiers(t *testing.T
 
 	peers := tracker.NewPeers()
 	startup := tracker.NewStartup(peers, startupAlpha)
-	beacons.RegisterCallbackListener(ctx.SubnetID, startup)
+	beacons.RegisterSetCallbackListener(ctx.SubnetID, startup)
 
 	syncer, fullVM, _ := buildTestsObjects(t, ctx, startup, beacons, (totalWeight+1)/2)
 
@@ -218,7 +221,8 @@ func TestStateSyncNotFoundOngoingSummaryIsNotIncludedAmongFrontiers(t *testing.T
 func TestBeaconsAreReachedForFrontiersUponStartup(t *testing.T) {
 	require := require.New(t)
 
-	ctx := snow.DefaultConsensusContextTest()
+	snowCtx := snowtest.Context(t, snowtest.CChainID)
+	ctx := snowtest.ConsensusContext(snowCtx)
 	beacons := buildTestPeers(t, ctx.SubnetID)
 	totalWeight, err := beacons.TotalWeight(ctx.SubnetID)
 	require.NoError(err)
@@ -226,7 +230,7 @@ func TestBeaconsAreReachedForFrontiersUponStartup(t *testing.T) {
 
 	peers := tracker.NewPeers()
 	startup := tracker.NewStartup(peers, startupAlpha)
-	beacons.RegisterCallbackListener(ctx.SubnetID, startup)
+	beacons.RegisterSetCallbackListener(ctx.SubnetID, startup)
 
 	syncer, _, sender := buildTestsObjects(t, ctx, startup, beacons, (totalWeight+1)/2)
 
@@ -243,7 +247,7 @@ func TestBeaconsAreReachedForFrontiersUponStartup(t *testing.T) {
 	}
 
 	// check that vdrs are reached out for frontiers
-	require.Len(contactedFrontiersProviders, safemath.Min(beacons.Count(ctx.SubnetID), maxOutstandingBroadcastRequests))
+	require.Len(contactedFrontiersProviders, min(beacons.NumValidators(ctx.SubnetID), maxOutstandingBroadcastRequests))
 	for beaconID := range contactedFrontiersProviders {
 		// check that beacon is duly marked as reached out
 		require.Contains(syncer.pendingSeeders, beaconID)
@@ -256,7 +260,8 @@ func TestBeaconsAreReachedForFrontiersUponStartup(t *testing.T) {
 func TestUnRequestedStateSummaryFrontiersAreDropped(t *testing.T) {
 	require := require.New(t)
 
-	ctx := snow.DefaultConsensusContextTest()
+	snowCtx := snowtest.Context(t, snowtest.CChainID)
+	ctx := snowtest.ConsensusContext(snowCtx)
 	beacons := buildTestPeers(t, ctx.SubnetID)
 	totalWeight, err := beacons.TotalWeight(ctx.SubnetID)
 	require.NoError(err)
@@ -264,7 +269,7 @@ func TestUnRequestedStateSummaryFrontiersAreDropped(t *testing.T) {
 
 	peers := tracker.NewPeers()
 	startup := tracker.NewStartup(peers, startupAlpha)
-	beacons.RegisterCallbackListener(ctx.SubnetID, startup)
+	beacons.RegisterSetCallbackListener(ctx.SubnetID, startup)
 
 	syncer, fullVM, sender := buildTestsObjects(t, ctx, startup, beacons, (totalWeight+1)/2)
 
@@ -289,7 +294,7 @@ func TestUnRequestedStateSummaryFrontiersAreDropped(t *testing.T) {
 	// mock VM to simulate a valid summary is returned
 	fullVM.CantParseStateSummary = true
 	fullVM.ParseStateSummaryF = func(_ context.Context, summaryBytes []byte) (block.StateSummary, error) {
-		return &block.TestStateSummary{
+		return &blocktest.StateSummary{
 			HeightV: key,
 			IDV:     summaryID,
 			BytesV:  summaryBytes,
@@ -339,13 +344,14 @@ func TestUnRequestedStateSummaryFrontiersAreDropped(t *testing.T) {
 	// other listed vdrs are reached for data
 	require.True(
 		len(contactedFrontiersProviders) > initiallyReachedOutBeaconsSize ||
-			len(contactedFrontiersProviders) == beacons.Count(ctx.SubnetID))
+			len(contactedFrontiersProviders) == beacons.NumValidators(ctx.SubnetID))
 }
 
 func TestMalformedStateSummaryFrontiersAreDropped(t *testing.T) {
 	require := require.New(t)
 
-	ctx := snow.DefaultConsensusContextTest()
+	snowCtx := snowtest.Context(t, snowtest.CChainID)
+	ctx := snowtest.ConsensusContext(snowCtx)
 	beacons := buildTestPeers(t, ctx.SubnetID)
 	totalWeight, err := beacons.TotalWeight(ctx.SubnetID)
 	require.NoError(err)
@@ -353,7 +359,7 @@ func TestMalformedStateSummaryFrontiersAreDropped(t *testing.T) {
 
 	peers := tracker.NewPeers()
 	startup := tracker.NewStartup(peers, startupAlpha)
-	beacons.RegisterCallbackListener(ctx.SubnetID, startup)
+	beacons.RegisterSetCallbackListener(ctx.SubnetID, startup)
 
 	syncer, fullVM, sender := buildTestsObjects(t, ctx, startup, beacons, (totalWeight+1)/2)
 
@@ -407,13 +413,14 @@ func TestMalformedStateSummaryFrontiersAreDropped(t *testing.T) {
 	// are reached for data
 	require.True(
 		len(contactedFrontiersProviders) > initiallyReachedOutBeaconsSize ||
-			len(contactedFrontiersProviders) == beacons.Count(ctx.SubnetID))
+			len(contactedFrontiersProviders) == beacons.NumValidators(ctx.SubnetID))
 }
 
 func TestLateResponsesFromUnresponsiveFrontiersAreNotRecorded(t *testing.T) {
 	require := require.New(t)
 
-	ctx := snow.DefaultConsensusContextTest()
+	snowCtx := snowtest.Context(t, snowtest.CChainID)
+	ctx := snowtest.ConsensusContext(snowCtx)
 	beacons := buildTestPeers(t, ctx.SubnetID)
 	totalWeight, err := beacons.TotalWeight(ctx.SubnetID)
 	require.NoError(err)
@@ -421,7 +428,7 @@ func TestLateResponsesFromUnresponsiveFrontiersAreNotRecorded(t *testing.T) {
 
 	peers := tracker.NewPeers()
 	startup := tracker.NewStartup(peers, startupAlpha)
-	beacons.RegisterCallbackListener(ctx.SubnetID, startup)
+	beacons.RegisterSetCallbackListener(ctx.SubnetID, startup)
 
 	syncer, fullVM, sender := buildTestsObjects(t, ctx, startup, beacons, (totalWeight+1)/2)
 
@@ -468,12 +475,12 @@ func TestLateResponsesFromUnresponsiveFrontiersAreNotRecorded(t *testing.T) {
 	// are reached for data
 	require.True(
 		len(contactedFrontiersProviders) > initiallyReachedOutBeaconsSize ||
-			len(contactedFrontiersProviders) == beacons.Count(ctx.SubnetID))
+			len(contactedFrontiersProviders) == beacons.NumValidators(ctx.SubnetID))
 
 	// mock VM to simulate a valid but late summary is returned
 	fullVM.CantParseStateSummary = true
 	fullVM.ParseStateSummaryF = func(_ context.Context, summaryBytes []byte) (block.StateSummary, error) {
-		return &block.TestStateSummary{
+		return &blocktest.StateSummary{
 			HeightV: key,
 			IDV:     summaryID,
 			BytesV:  summaryBytes,
@@ -495,7 +502,8 @@ func TestLateResponsesFromUnresponsiveFrontiersAreNotRecorded(t *testing.T) {
 func TestStateSyncIsRestartedIfTooManyFrontierSeedersTimeout(t *testing.T) {
 	require := require.New(t)
 
-	ctx := snow.DefaultConsensusContextTest()
+	snowCtx := snowtest.Context(t, snowtest.CChainID)
+	ctx := snowtest.ConsensusContext(snowCtx)
 	beacons := buildTestPeers(t, ctx.SubnetID)
 	totalWeight, err := beacons.TotalWeight(ctx.SubnetID)
 	require.NoError(err)
@@ -503,7 +511,7 @@ func TestStateSyncIsRestartedIfTooManyFrontierSeedersTimeout(t *testing.T) {
 
 	peers := tracker.NewPeers()
 	startup := tracker.NewStartup(peers, startupAlpha)
-	beacons.RegisterCallbackListener(ctx.SubnetID, startup)
+	beacons.RegisterSetCallbackListener(ctx.SubnetID, startup)
 
 	syncer, fullVM, sender := buildTestsObjects(t, ctx, startup, beacons, (totalWeight+1)/2)
 
@@ -521,7 +529,7 @@ func TestStateSyncIsRestartedIfTooManyFrontierSeedersTimeout(t *testing.T) {
 	fullVM.ParseStateSummaryF = func(_ context.Context, b []byte) (block.StateSummary, error) {
 		switch {
 		case bytes.Equal(b, summaryBytes):
-			return &block.TestStateSummary{
+			return &blocktest.StateSummary{
 				HeightV: key,
 				IDV:     summaryID,
 				BytesV:  summaryBytes,
@@ -583,7 +591,8 @@ func TestStateSyncIsRestartedIfTooManyFrontierSeedersTimeout(t *testing.T) {
 func TestVoteRequestsAreSentAsAllFrontierBeaconsResponded(t *testing.T) {
 	require := require.New(t)
 
-	ctx := snow.DefaultConsensusContextTest()
+	snowCtx := snowtest.Context(t, snowtest.CChainID)
+	ctx := snowtest.ConsensusContext(snowCtx)
 	beacons := buildTestPeers(t, ctx.SubnetID)
 	totalWeight, err := beacons.TotalWeight(ctx.SubnetID)
 	require.NoError(err)
@@ -591,7 +600,7 @@ func TestVoteRequestsAreSentAsAllFrontierBeaconsResponded(t *testing.T) {
 
 	peers := tracker.NewPeers()
 	startup := tracker.NewStartup(peers, startupAlpha)
-	beacons.RegisterCallbackListener(ctx.SubnetID, startup)
+	beacons.RegisterSetCallbackListener(ctx.SubnetID, startup)
 
 	syncer, fullVM, sender := buildTestsObjects(t, ctx, startup, beacons, (totalWeight+1)/2)
 
@@ -608,7 +617,7 @@ func TestVoteRequestsAreSentAsAllFrontierBeaconsResponded(t *testing.T) {
 	fullVM.CantParseStateSummary = true
 	fullVM.ParseStateSummaryF = func(_ context.Context, b []byte) (block.StateSummary, error) {
 		require.Equal(summaryBytes, b)
-		return &block.TestStateSummary{
+		return &blocktest.StateSummary{
 			HeightV: key,
 			IDV:     summaryID,
 			BytesV:  summaryBytes,
@@ -653,7 +662,8 @@ func TestVoteRequestsAreSentAsAllFrontierBeaconsResponded(t *testing.T) {
 func TestUnRequestedVotesAreDropped(t *testing.T) {
 	require := require.New(t)
 
-	ctx := snow.DefaultConsensusContextTest()
+	snowCtx := snowtest.Context(t, snowtest.CChainID)
+	ctx := snowtest.ConsensusContext(snowCtx)
 	beacons := buildTestPeers(t, ctx.SubnetID)
 	totalWeight, err := beacons.TotalWeight(ctx.SubnetID)
 	require.NoError(err)
@@ -661,7 +671,7 @@ func TestUnRequestedVotesAreDropped(t *testing.T) {
 
 	peers := tracker.NewPeers()
 	startup := tracker.NewStartup(peers, startupAlpha)
-	beacons.RegisterCallbackListener(ctx.SubnetID, startup)
+	beacons.RegisterSetCallbackListener(ctx.SubnetID, startup)
 
 	syncer, fullVM, sender := buildTestsObjects(t, ctx, startup, beacons, (totalWeight+1)/2)
 
@@ -677,7 +687,7 @@ func TestUnRequestedVotesAreDropped(t *testing.T) {
 	// mock VM to simulate a valid summary is returned
 	fullVM.CantParseStateSummary = true
 	fullVM.ParseStateSummaryF = func(_ context.Context, summaryBytes []byte) (block.StateSummary, error) {
-		return &block.TestStateSummary{
+		return &blocktest.StateSummary{
 			HeightV: key,
 			IDV:     summaryID,
 			BytesV:  summaryBytes,
@@ -763,13 +773,14 @@ func TestUnRequestedVotesAreDropped(t *testing.T) {
 	// other listed voters are reached out
 	require.True(
 		len(contactedVoters) > initiallyContactedVotersSize ||
-			len(contactedVoters) == beacons.Count(ctx.SubnetID))
+			len(contactedVoters) == beacons.NumValidators(ctx.SubnetID))
 }
 
 func TestVotesForUnknownSummariesAreDropped(t *testing.T) {
 	require := require.New(t)
 
-	ctx := snow.DefaultConsensusContextTest()
+	snowCtx := snowtest.Context(t, snowtest.CChainID)
+	ctx := snowtest.ConsensusContext(snowCtx)
 	beacons := buildTestPeers(t, ctx.SubnetID)
 	totalWeight, err := beacons.TotalWeight(ctx.SubnetID)
 	require.NoError(err)
@@ -777,7 +788,7 @@ func TestVotesForUnknownSummariesAreDropped(t *testing.T) {
 
 	peers := tracker.NewPeers()
 	startup := tracker.NewStartup(peers, startupAlpha)
-	beacons.RegisterCallbackListener(ctx.SubnetID, startup)
+	beacons.RegisterSetCallbackListener(ctx.SubnetID, startup)
 
 	syncer, fullVM, sender := buildTestsObjects(t, ctx, startup, beacons, (totalWeight+1)/2)
 
@@ -793,7 +804,7 @@ func TestVotesForUnknownSummariesAreDropped(t *testing.T) {
 	// mock VM to simulate a valid summary is returned
 	fullVM.CantParseStateSummary = true
 	fullVM.ParseStateSummaryF = func(_ context.Context, summaryBytes []byte) (block.StateSummary, error) {
-		return &block.TestStateSummary{
+		return &blocktest.StateSummary{
 			HeightV: key,
 			IDV:     summaryID,
 			BytesV:  summaryBytes,
@@ -865,13 +876,14 @@ func TestVotesForUnknownSummariesAreDropped(t *testing.T) {
 	// on unknown summary
 	require.True(
 		len(contactedVoters) > initiallyContactedVotersSize ||
-			len(contactedVoters) == beacons.Count(ctx.SubnetID))
+			len(contactedVoters) == beacons.NumValidators(ctx.SubnetID))
 }
 
 func TestStateSummaryIsPassedToVMAsMajorityOfVotesIsCastedForIt(t *testing.T) {
 	require := require.New(t)
 
-	ctx := snow.DefaultConsensusContextTest()
+	snowCtx := snowtest.Context(t, snowtest.CChainID)
+	ctx := snowtest.ConsensusContext(snowCtx)
 	beacons := buildTestPeers(t, ctx.SubnetID)
 	totalWeight, err := beacons.TotalWeight(ctx.SubnetID)
 	require.NoError(err)
@@ -880,7 +892,7 @@ func TestStateSummaryIsPassedToVMAsMajorityOfVotesIsCastedForIt(t *testing.T) {
 
 	peers := tracker.NewPeers()
 	startup := tracker.NewStartup(peers, startupAlpha)
-	beacons.RegisterCallbackListener(ctx.SubnetID, startup)
+	beacons.RegisterSetCallbackListener(ctx.SubnetID, startup)
 
 	syncer, fullVM, sender := buildTestsObjects(t, ctx, startup, beacons, alpha)
 
@@ -894,13 +906,13 @@ func TestStateSummaryIsPassedToVMAsMajorityOfVotesIsCastedForIt(t *testing.T) {
 	}
 
 	// mock VM to simulate a valid summary is returned
-	summary := &block.TestStateSummary{
+	summary := &blocktest.StateSummary{
 		HeightV: key,
 		IDV:     summaryID,
 		BytesV:  summaryBytes,
 		T:       t,
 	}
-	minoritySummary := &block.TestStateSummary{
+	minoritySummary := &blocktest.StateSummary{
 		HeightV: minorityKey,
 		IDV:     minoritySummaryID,
 		BytesV:  minoritySummaryBytes,
@@ -1015,7 +1027,8 @@ func TestStateSummaryIsPassedToVMAsMajorityOfVotesIsCastedForIt(t *testing.T) {
 func TestVotingIsRestartedIfMajorityIsNotReachedDueToTimeouts(t *testing.T) {
 	require := require.New(t)
 
-	ctx := snow.DefaultConsensusContextTest()
+	snowCtx := snowtest.Context(t, snowtest.CChainID)
+	ctx := snowtest.ConsensusContext(snowCtx)
 	beacons := buildTestPeers(t, ctx.SubnetID)
 	totalWeight, err := beacons.TotalWeight(ctx.SubnetID)
 	require.NoError(err)
@@ -1024,7 +1037,7 @@ func TestVotingIsRestartedIfMajorityIsNotReachedDueToTimeouts(t *testing.T) {
 
 	peers := tracker.NewPeers()
 	startup := tracker.NewStartup(peers, startupAlpha)
-	beacons.RegisterCallbackListener(ctx.SubnetID, startup)
+	beacons.RegisterSetCallbackListener(ctx.SubnetID, startup)
 
 	syncer, fullVM, sender := buildTestsObjects(t, ctx, startup, beacons, alpha)
 
@@ -1038,7 +1051,7 @@ func TestVotingIsRestartedIfMajorityIsNotReachedDueToTimeouts(t *testing.T) {
 	}
 
 	// mock VM to simulate a valid summary is returned
-	minoritySummary := &block.TestStateSummary{
+	minoritySummary := &blocktest.StateSummary{
 		HeightV: minorityKey,
 		IDV:     minoritySummaryID,
 		BytesV:  minoritySummaryBytes,
@@ -1120,7 +1133,8 @@ func TestVotingIsRestartedIfMajorityIsNotReachedDueToTimeouts(t *testing.T) {
 func TestStateSyncIsStoppedIfEnoughVotesAreCastedWithNoClearMajority(t *testing.T) {
 	require := require.New(t)
 
-	ctx := snow.DefaultConsensusContextTest()
+	snowCtx := snowtest.Context(t, snowtest.CChainID)
+	ctx := snowtest.ConsensusContext(snowCtx)
 	beacons := buildTestPeers(t, ctx.SubnetID)
 	totalWeight, err := beacons.TotalWeight(ctx.SubnetID)
 	require.NoError(err)
@@ -1129,7 +1143,7 @@ func TestStateSyncIsStoppedIfEnoughVotesAreCastedWithNoClearMajority(t *testing.
 
 	peers := tracker.NewPeers()
 	startup := tracker.NewStartup(peers, startupAlpha)
-	beacons.RegisterCallbackListener(ctx.SubnetID, startup)
+	beacons.RegisterSetCallbackListener(ctx.SubnetID, startup)
 
 	syncer, fullVM, sender := buildTestsObjects(t, ctx, startup, beacons, alpha)
 
@@ -1143,13 +1157,13 @@ func TestStateSyncIsStoppedIfEnoughVotesAreCastedWithNoClearMajority(t *testing.
 	}
 
 	// mock VM to simulate a valid minoritySummary1 is returned
-	minoritySummary1 := &block.TestStateSummary{
+	minoritySummary1 := &blocktest.StateSummary{
 		HeightV: key,
 		IDV:     summaryID,
 		BytesV:  summaryBytes,
 		T:       t,
 	}
-	minoritySummary2 := &block.TestStateSummary{
+	minoritySummary2 := &blocktest.StateSummary{
 		HeightV: minorityKey,
 		IDV:     minoritySummaryID,
 		BytesV:  minoritySummaryBytes,
@@ -1265,7 +1279,8 @@ func TestStateSyncIsStoppedIfEnoughVotesAreCastedWithNoClearMajority(t *testing.
 func TestStateSyncIsDoneOnceVMNotifies(t *testing.T) {
 	require := require.New(t)
 
-	ctx := snow.DefaultConsensusContextTest()
+	snowCtx := snowtest.Context(t, snowtest.CChainID)
+	ctx := snowtest.ConsensusContext(snowCtx)
 	beacons := buildTestPeers(t, ctx.SubnetID)
 	totalWeight, err := beacons.TotalWeight(ctx.SubnetID)
 	require.NoError(err)
@@ -1273,7 +1288,7 @@ func TestStateSyncIsDoneOnceVMNotifies(t *testing.T) {
 
 	peers := tracker.NewPeers()
 	startup := tracker.NewStartup(peers, startupAlpha)
-	beacons.RegisterCallbackListener(ctx.SubnetID, startup)
+	beacons.RegisterSetCallbackListener(ctx.SubnetID, startup)
 
 	syncer, _, _ := buildTestsObjects(t, ctx, startup, beacons, (totalWeight+1)/2)
 

@@ -1,24 +1,23 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package c
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math/big"
 	"sync"
 
-	stdcontext "context"
-
 	"github.com/ava-labs/coreth/plugin/evm"
-
-	ethcommon "github.com/ethereum/go-ethereum/common"
 
 	"github.com/ava-labs/avalanchego/database"
 	"github.com/ava-labs/avalanchego/utils/math"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
 	"github.com/ava-labs/avalanchego/wallet/subnet/primary/common"
+
+	ethcommon "github.com/ethereum/go-ethereum/common"
 )
 
 var (
@@ -33,11 +32,10 @@ type Backend interface {
 	BuilderBackend
 	SignerBackend
 
-	AcceptAtomicTx(ctx stdcontext.Context, tx *evm.Tx) error
+	AcceptAtomicTx(ctx context.Context, tx *evm.Tx) error
 }
 
 type backend struct {
-	Context
 	common.ChainUTXOs
 
 	accountsLock sync.RWMutex
@@ -50,18 +48,16 @@ type Account struct {
 }
 
 func NewBackend(
-	ctx Context,
 	utxos common.ChainUTXOs,
 	accounts map[ethcommon.Address]*Account,
 ) Backend {
 	return &backend{
-		Context:    ctx,
 		ChainUTXOs: utxos,
 		accounts:   accounts,
 	}
 }
 
-func (b *backend) AcceptAtomicTx(ctx stdcontext.Context, tx *evm.Tx) error {
+func (b *backend) AcceptAtomicTx(ctx context.Context, tx *evm.Tx) error {
 	switch tx := tx.UnsignedAtomicTx.(type) {
 	case *evm.UnsignedImportTx:
 		for _, input := range tx.ImportedInputs {
@@ -120,7 +116,7 @@ func (b *backend) AcceptAtomicTx(ctx stdcontext.Context, tx *evm.Tx) error {
 			}
 			account.Balance.Sub(account.Balance, balance)
 
-			newNonce, err := math.Add64(input.Nonce, 1)
+			newNonce, err := math.Add(input.Nonce, 1)
 			if err != nil {
 				return err
 			}
@@ -132,7 +128,7 @@ func (b *backend) AcceptAtomicTx(ctx stdcontext.Context, tx *evm.Tx) error {
 	return nil
 }
 
-func (b *backend) Balance(_ stdcontext.Context, addr ethcommon.Address) (*big.Int, error) {
+func (b *backend) Balance(_ context.Context, addr ethcommon.Address) (*big.Int, error) {
 	b.accountsLock.RLock()
 	defer b.accountsLock.RUnlock()
 
@@ -143,7 +139,7 @@ func (b *backend) Balance(_ stdcontext.Context, addr ethcommon.Address) (*big.In
 	return account.Balance, nil
 }
 
-func (b *backend) Nonce(_ stdcontext.Context, addr ethcommon.Address) (uint64, error) {
+func (b *backend) Nonce(_ context.Context, addr ethcommon.Address) (uint64, error) {
 	b.accountsLock.RLock()
 	defer b.accountsLock.RUnlock()
 

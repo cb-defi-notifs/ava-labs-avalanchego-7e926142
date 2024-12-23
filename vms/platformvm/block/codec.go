@@ -1,73 +1,88 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package block
 
 import (
+	"errors"
 	"math"
 
 	"github.com/ava-labs/avalanchego/codec"
 	"github.com/ava-labs/avalanchego/codec/linearcodec"
-	"github.com/ava-labs/avalanchego/utils"
 	"github.com/ava-labs/avalanchego/utils/wrappers"
 	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
 )
 
-// Version is the current default codec version
-const Version = txs.Version
+const CodecVersion = txs.CodecVersion
 
-// GenesisCode allows blocks of larger than usual size to be parsed.
-// While this gives flexibility in accommodating large genesis blocks
-// it must not be used to parse new, unverified blocks which instead
-// must be processed by Codec
 var (
-	Codec        codec.Manager
+	// GenesisCodec allows blocks of larger than usual size to be parsed.
+	// While this gives flexibility in accommodating large genesis blocks
+	// it must not be used to parse new, unverified blocks which instead
+	// must be processed by Codec
 	GenesisCodec codec.Manager
+
+	Codec codec.Manager
 )
 
 func init() {
 	c := linearcodec.NewDefault()
-	Codec = codec.NewDefaultManager()
-	gc := linearcodec.NewCustomMaxLength(math.MaxInt32)
-	GenesisCodec = codec.NewManager(math.MaxInt32)
+	gc := linearcodec.NewDefault()
 
 	errs := wrappers.Errs{}
 	for _, c := range []linearcodec.Codec{c, gc} {
 		errs.Add(
-			RegisterApricotBlockTypes(c),
-			txs.RegisterUnsignedTxsTypes(c),
-			RegisterBanffBlockTypes(c),
-			txs.RegisterDUnsignedTxsTypes(c),
+			RegisterApricotTypes(c),
+			RegisterBanffTypes(c),
+			RegisterDurangoTypes(c),
+			RegisterEtnaTypes(c),
 		)
 	}
+
+	Codec = codec.NewDefaultManager()
+	GenesisCodec = codec.NewManager(math.MaxInt32)
 	errs.Add(
-		Codec.RegisterCodec(Version, c),
-		GenesisCodec.RegisterCodec(Version, gc),
+		Codec.RegisterCodec(CodecVersion, c),
+		GenesisCodec.RegisterCodec(CodecVersion, gc),
 	)
 	if errs.Errored() {
 		panic(errs.Err)
 	}
 }
 
-// RegisterApricotBlockTypes allows registering relevant type of blocks package
-// in the right sequence. Following repackaging of platformvm package, a few
-// subpackage-level codecs were introduced, each handling serialization of
-// specific types.
-func RegisterApricotBlockTypes(targetCodec codec.Registry) error {
-	return utils.Err(
+// RegisterApricotTypes registers the type information for blocks that were
+// valid during the Apricot series of upgrades.
+func RegisterApricotTypes(targetCodec linearcodec.Codec) error {
+	return errors.Join(
 		targetCodec.RegisterType(&ApricotProposalBlock{}),
 		targetCodec.RegisterType(&ApricotAbortBlock{}),
 		targetCodec.RegisterType(&ApricotCommitBlock{}),
 		targetCodec.RegisterType(&ApricotStandardBlock{}),
 		targetCodec.RegisterType(&ApricotAtomicBlock{}),
+		txs.RegisterApricotTypes(targetCodec),
 	)
 }
 
-func RegisterBanffBlockTypes(targetCodec codec.Registry) error {
-	return utils.Err(
+// RegisterBanffTypes registers the type information for blocks that were valid
+// during the Banff series of upgrades.
+func RegisterBanffTypes(targetCodec linearcodec.Codec) error {
+	return errors.Join(
+		txs.RegisterBanffTypes(targetCodec),
 		targetCodec.RegisterType(&BanffProposalBlock{}),
 		targetCodec.RegisterType(&BanffAbortBlock{}),
 		targetCodec.RegisterType(&BanffCommitBlock{}),
 		targetCodec.RegisterType(&BanffStandardBlock{}),
 	)
+}
+
+// RegisterDurangoTypes registers the type information for blocks that were
+// valid during the Durango series of upgrades.
+func RegisterDurangoTypes(targetCodec linearcodec.Codec) error {
+	return txs.RegisterDurangoTypes(targetCodec)
+}
+
+// RegisterEtnaTypes registers the type information for blocks that were valid
+// during the Etna series of upgrades.
+func RegisterEtnaTypes(targetCodec linearcodec.Codec) error {
+	return txs.RegisterEtnaTypes(targetCodec)
 }

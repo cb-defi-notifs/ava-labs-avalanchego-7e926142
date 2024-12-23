@@ -1,11 +1,9 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package e2e
 
-import (
-	ginkgo "github.com/onsi/ginkgo/v2"
-)
+import "github.com/onsi/ginkgo/v2"
 
 const (
 	// For label usage in ginkgo invocation, see: https://onsi.github.io/ginkgo/#spec-labels

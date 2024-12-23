@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package validators
@@ -32,6 +32,14 @@ type State interface {
 		height uint64,
 		subnetID ids.ID,
 	) (map[ids.NodeID]*GetValidatorOutput, error)
+
+	// GetCurrentValidatorSet returns the current validators of the provided subnet
+	// and the current P-Chain height.
+	// Map is keyed by ValidationID.
+	GetCurrentValidatorSet(
+		ctx context.Context,
+		subnetID ids.ID,
+	) (map[ids.ID]*GetCurrentValidatorOutput, uint64, error)
 }
 
 type lockedState struct {
@@ -78,6 +86,16 @@ func (s *lockedState) GetValidatorSet(
 	return s.s.GetValidatorSet(ctx, height, subnetID)
 }
 
+func (s *lockedState) GetCurrentValidatorSet(
+	ctx context.Context,
+	subnetID ids.ID,
+) (map[ids.ID]*GetCurrentValidatorOutput, uint64, error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	return s.s.GetCurrentValidatorSet(ctx, subnetID)
+}
+
 type noValidators struct {
 	State
 }
@@ -90,4 +108,9 @@ func NewNoValidatorsState(state State) State {
 
 func (*noValidators) GetValidatorSet(context.Context, uint64, ids.ID) (map[ids.NodeID]*GetValidatorOutput, error) {
 	return nil, nil
+}
+
+func (n *noValidators) GetCurrentValidatorSet(ctx context.Context, _ ids.ID) (map[ids.ID]*GetCurrentValidatorOutput, uint64, error) {
+	height, err := n.GetCurrentHeight(ctx)
+	return nil, height, err
 }

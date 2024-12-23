@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package node
@@ -56,8 +56,15 @@ func (o *overriddenManager) RemoveWeight(_ ids.ID, nodeID ids.NodeID, weight uin
 	return o.manager.RemoveWeight(o.subnetID, nodeID, weight)
 }
 
-func (o *overriddenManager) Count(ids.ID) int {
-	return o.manager.Count(o.subnetID)
+func (o *overriddenManager) NumSubnets() int {
+	if o.manager.NumValidators(o.subnetID) == 0 {
+		return 0
+	}
+	return 1
+}
+
+func (o *overriddenManager) NumValidators(ids.ID) int {
+	return o.manager.NumValidators(o.subnetID)
 }
 
 func (o *overriddenManager) TotalWeight(ids.ID) (uint64, error) {
@@ -72,8 +79,12 @@ func (o *overriddenManager) GetMap(ids.ID) map[ids.NodeID]*validators.GetValidat
 	return o.manager.GetMap(o.subnetID)
 }
 
-func (o *overriddenManager) RegisterCallbackListener(_ ids.ID, listener validators.SetCallbackListener) {
-	o.manager.RegisterCallbackListener(o.subnetID, listener)
+func (o *overriddenManager) RegisterCallbackListener(listener validators.ManagerCallbackListener) {
+	o.manager.RegisterCallbackListener(listener)
+}
+
+func (o *overriddenManager) RegisterSetCallbackListener(_ ids.ID, listener validators.SetCallbackListener) {
+	o.manager.RegisterSetCallbackListener(o.subnetID, listener)
 }
 
 func (o *overriddenManager) String() string {

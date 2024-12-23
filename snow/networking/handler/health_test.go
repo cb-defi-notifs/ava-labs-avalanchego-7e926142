@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package handler
@@ -9,21 +9,24 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/stretchr/testify/require"
 
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/proto/pb/p2p"
+	"github.com/ava-labs/avalanchego/network/p2p"
 	"github.com/ava-labs/avalanchego/snow"
 	"github.com/ava-labs/avalanchego/snow/consensus/snowball"
-	"github.com/ava-labs/avalanchego/snow/engine/common"
+	"github.com/ava-labs/avalanchego/snow/engine/enginetest"
 	"github.com/ava-labs/avalanchego/snow/networking/tracker"
+	"github.com/ava-labs/avalanchego/snow/snowtest"
 	"github.com/ava-labs/avalanchego/snow/validators"
 	"github.com/ava-labs/avalanchego/subnets"
+	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/math/meter"
 	"github.com/ava-labs/avalanchego/utils/resource"
 	"github.com/ava-labs/avalanchego/utils/set"
+	"github.com/ava-labs/avalanchego/version"
 
+	p2ppb "github.com/ava-labs/avalanchego/proto/pb/p2p"
 	commontracker "github.com/ava-labs/avalanchego/snow/engine/common/tracker"
 )
 
@@ -47,7 +50,8 @@ func TestHealthCheckSubnet(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 
-			ctx := snow.DefaultConsensusContextTest()
+			snowCtx := snowtest.Context(t, snowtest.CChainID)
+			ctx := snowtest.ConsensusContext(snowCtx)
 
 			vdrs := validators.NewManager()
 
@@ -60,7 +64,7 @@ func TestHealthCheckSubnet(t *testing.T) {
 			require.NoError(err)
 
 			peerTracker := commontracker.NewPeers()
-			vdrs.RegisterCallbackListener(ctx.SubnetID, peerTracker)
+			vdrs.RegisterSetCallbackListener(ctx.SubnetID, peerTracker)
 
 			sb := subnets.New(
 				ctx.NodeID,
@@ -68,6 +72,16 @@ func TestHealthCheckSubnet(t *testing.T) {
 					ConsensusParameters: test.consensusParams,
 				},
 			)
+
+			p2pTracker, err := p2p.NewPeerTracker(
+				logging.NoLog{},
+				"",
+				prometheus.NewRegistry(),
+				nil,
+				version.CurrentApp,
+			)
+			require.NoError(err)
+
 			handlerIntf, err := New(
 				ctx,
 				vdrs,
@@ -75,20 +89,22 @@ func TestHealthCheckSubnet(t *testing.T) {
 				time.Second,
 				testThreadPoolSize,
 				resourceTracker,
-				validators.UnhandledSubnetConnector,
 				sb,
 				peerTracker,
+				p2pTracker,
+				prometheus.NewRegistry(),
+				func() {},
 			)
 			require.NoError(err)
 
-			bootstrapper := &common.BootstrapperTest{
-				EngineTest: common.EngineTest{
+			bootstrapper := &enginetest.Bootstrapper{
+				Engine: enginetest.Engine{
 					T: t,
 				},
 			}
 			bootstrapper.Default(false)
 
-			engine := &common.EngineTest{T: t}
+			engine := &enginetest.Engine{T: t}
 			engine.Default(false)
 			engine.ContextF = func() *snow.ConsensusContext {
 				return ctx
@@ -102,7 +118,7 @@ func TestHealthCheckSubnet(t *testing.T) {
 			})
 
 			ctx.State.Set(snow.EngineState{
-				Type:  p2p.EngineType_ENGINE_TYPE_SNOWMAN,
+				Type:  p2ppb.EngineType_ENGINE_TYPE_SNOWMAN,
 				State: snow.NormalOp, // assumed bootstrap is done
 			})
 
@@ -120,8 +136,8 @@ func TestHealthCheckSubnet(t *testing.T) {
 
 				require.NoError(vdrs.AddStaker(ctx.SubnetID, vdrID, nil, ids.Empty, 100))
 			}
-
-			for index, nodeID := range vdrIDs.List() {
+			vdrIDsList := vdrIDs.List()
+			for index, nodeID := range vdrIDsList {
 				require.NoError(peerTracker.Connected(context.Background(), nodeID, nil))
 
 				details, err := handlerIntf.HealthCheck(context.Background())
@@ -136,13 +152,13 @@ func TestHealthCheckSubnet(t *testing.T) {
 
 				detailsMap, ok := details.(map[string]interface{})
 				require.True(ok)
-				networkingMap, ok := detailsMap["networking"]
-				require.True(ok)
-				networkingDetails, ok := networkingMap.(map[string]float64)
-				require.True(ok)
-				percentConnected, ok := networkingDetails["percentConnected"]
-				require.True(ok)
-				require.Equal(expectedPercentConnected, percentConnected)
+				require.Equal(
+					map[string]interface{}{
+						"percentConnected":       expectedPercentConnected,
+						"disconnectedValidators": set.Of(vdrIDsList[index+1:]...),
+					},
+					detailsMap["networking"],
+				)
 			}
 		})
 	}

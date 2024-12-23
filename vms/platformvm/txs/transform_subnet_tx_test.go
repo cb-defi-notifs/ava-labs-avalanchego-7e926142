@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package txs
@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
 	"go.uber.org/mock/gomock"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -17,7 +16,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/units"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
-	"github.com/ava-labs/avalanchego/vms/components/verify"
+	"github.com/ava-labs/avalanchego/vms/components/verify/verifymock"
 	"github.com/ava-labs/avalanchego/vms/platformvm/reward"
 	"github.com/ava-labs/avalanchego/vms/platformvm/stakeable"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
@@ -223,7 +222,7 @@ func TestTransformSubnetTxSerialization(t *testing.T) {
 		0x00, 0x00, 0x00, 0x03,
 	}
 	var unsignedSimpleTransformTx UnsignedTx = simpleTransformTx
-	unsignedSimpleTransformTxBytes, err := Codec.Marshal(Version, &unsignedSimpleTransformTx)
+	unsignedSimpleTransformTxBytes, err := Codec.Marshal(CodecVersion, &unsignedSimpleTransformTx)
 	require.NoError(err)
 	require.Equal(expectedUnsignedSimpleTransformTxBytes, unsignedSimpleTransformTxBytes)
 
@@ -520,7 +519,7 @@ func TestTransformSubnetTxSerialization(t *testing.T) {
 		0x00, 0x00, 0x00, 0x00,
 	}
 	var unsignedComplexTransformTx UnsignedTx = complexTransformTx
-	unsignedComplexTransformTxBytes, err := Codec.Marshal(Version, &unsignedComplexTransformTx)
+	unsignedComplexTransformTxBytes, err := Codec.Marshal(CodecVersion, &unsignedComplexTransformTx)
 	require.NoError(err)
 	require.Equal(expectedUnsignedComplexTransformTxBytes, unsignedComplexTransformTxBytes)
 
@@ -961,7 +960,7 @@ func TestTransformSubnetTxSyntacticVerify(t *testing.T) {
 			name: "invalid subnetAuth",
 			txFunc: func(ctrl *gomock.Controller) *TransformSubnetTx {
 				// This SubnetAuth fails verification.
-				invalidSubnetAuth := verify.NewMockVerifiable(ctrl)
+				invalidSubnetAuth := verifymock.NewVerifiable(ctrl)
 				invalidSubnetAuth.EXPECT().Verify().Return(errInvalidSubnetAuth)
 				return &TransformSubnetTx{
 					BaseTx:                   validBaseTx,
@@ -1011,7 +1010,7 @@ func TestTransformSubnetTxSyntacticVerify(t *testing.T) {
 			name: "passes verification",
 			txFunc: func(ctrl *gomock.Controller) *TransformSubnetTx {
 				// This SubnetAuth passes verification.
-				validSubnetAuth := verify.NewMockVerifiable(ctrl)
+				validSubnetAuth := verifymock.NewVerifiable(ctrl)
 				validSubnetAuth.EXPECT().Verify().Return(nil)
 				return &TransformSubnetTx{
 					BaseTx:                   validBaseTx,

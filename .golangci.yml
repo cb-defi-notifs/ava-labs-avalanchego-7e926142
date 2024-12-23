@@ -2,11 +2,6 @@
 run:
   timeout: 10m
 
-  # Enables skipping of directories:
-  # - vendor$, third_party$, testdata$, examples$, Godeps$, builtin$
-  # Default: true
-  skip-dirs-use-default: false
-
   # If set we pass it to "go list -mod={option}". From "go help modules":
   # If invoked with -mod=readonly, the go command is disallowed from the implicit
   # automatic updating of go.mod described above. Instead, it fails when any changes
@@ -19,6 +14,11 @@ run:
   # Allowed values: readonly|vendor|mod
   # By default, it isn't set.
   modules-download-mode: readonly
+
+  # Include non-test files tagged as test-only.
+  # Context: https://github.com/ava-labs/avalanchego/pull/3173
+  build-tags:
+    - test
 
 output:
   # Make issues output unique by line.
@@ -36,6 +36,11 @@ issues:
   # Default: 3
   max-same-issues: 0
 
+  # Enables skipping of directories:
+  # - vendor$, third_party$, testdata$, examples$, Godeps$, builtin$
+  # Default: true
+  exclude-dirs-use-default: false
+
 linters:
   disable-all: true
   enable:
@@ -47,12 +52,12 @@ linters:
     - errorlint
     - exportloopref
     - forbidigo
+    - gci
     - goconst
     - gocritic
     # - goerr113
     - gofmt
     - gofumpt
-    - goimports
     # - gomnd
     - goprintffuncname
     - gosec
@@ -63,14 +68,18 @@ linters:
     # - lll
     - misspell
     - nakedret
+    - nilerr
     - noctx
     - nolintlint
     - perfsprint
     - prealloc
+    - predeclared
     - revive
+    - spancheck
     - staticcheck
     - stylecheck
     - tagalign
+    - testifylint
     - typecheck
     - unconvert
     - unparam
@@ -83,12 +92,14 @@ linters-settings:
     rules:
       packages:
         deny:
-          - pkg: "io/ioutil"
-            desc: io/ioutil is deprecated. Use package io or os instead.
-          - pkg: "github.com/stretchr/testify/assert"
-            desc: github.com/stretchr/testify/require should be used instead.
+          - pkg: "container/list"
+            desc: github.com/ava-labs/avalanchego/utils/linked should be used instead.
           - pkg: "github.com/golang/mock/gomock"
             desc: go.uber.org/mock/gomock should be used instead.
+          - pkg: "github.com/stretchr/testify/assert"
+            desc: github.com/stretchr/testify/require should be used instead.
+          - pkg: "io/ioutil"
+            desc: io/ioutil is deprecated. Use package io or os instead.
   errorlint:
     # Check for plain type assertions and type switches.
     asserts: false
@@ -104,8 +115,16 @@ linters-settings:
       - '^(t|b|tb|f)\.(Fatal|Fatalf|Error|Errorf)$(# the require library should be used instead)?'
     # Exclude godoc examples from forbidigo checks.
     exclude_godoc_examples: false
-  goimports:
-    local-prefixes: github.com/ava-labs/avalanchego
+  gci:
+    sections:
+      - standard
+      - default
+      - blank
+      - prefix(github.com/ava-labs/avalanchego)
+      - alias
+      - dot
+    skip-generated: true
+    custom-order: true
   gosec:
     excludes:
       - G107 # Url provided to HTTP request as taint input https://securego.io/docs/rules/g107
@@ -118,6 +137,8 @@ linters-settings:
     alias:
       - pkg: github.com/ava-labs/avalanchego/utils/math
         alias: safemath
+      - pkg: github.com/ava-labs/avalanchego/utils/json
+        alias: avajson
   revive:
     rules:
       # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#bool-literal-in-expr
@@ -133,7 +154,14 @@ linters-settings:
       - name: string-format
         disabled: false
         arguments:
+        - ["b.Logf[0]", "/.*%.*/", "no format directive, use b.Log instead"]
         - ["fmt.Errorf[0]", "/.*%.*/", "no format directive, use errors.New instead"]
+        - ["fmt.Fprintf[1]", "/.*%.*/", "no format directive, use fmt.Fprint instead"]
+        - ["fmt.Printf[0]", "/.*%.*/", "no format directive, use fmt.Print instead"]
+        - ["fmt.Sprintf[0]", "/.*%.*/", "no format directive, use fmt.Sprint instead"]
+        - ["log.Fatalf[0]", "/.*%.*/", "no format directive, use log.Fatal instead"]
+        - ["log.Printf[0]", "/.*%.*/", "no format directive, use log.Print instead"]
+        - ["t.Logf[0]", "/.*%.*/", "no format directive, use t.Log instead"]
       # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#struct-tag
       - name: struct-tag
         disabled: false
@@ -142,15 +170,10 @@ linters-settings:
         disabled: false
       # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#unhandled-error
       - name: unhandled-error
-        disabled: false
-        arguments:
-          - "fmt\\.Fprint"
-          - "fmt\\.Fprintf"
-          - "fmt\\.Print"
-          - "fmt\\.Printf"
-          - "fmt\\.Println"
-          - "math/rand\\.Read"
-          - "strings\\.Builder\\.WriteString"
+        # prefer the errcheck linter since it can be disabled directly with nolint directive
+        # but revive's disable directive (e.g. //revive:disable:unhandled-error) is not
+        # supported when run under golangci_lint
+        disabled: true
       # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#unused-parameter
       - name: unused-parameter
         disabled: false
@@ -160,6 +183,12 @@ linters-settings:
       # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#useless-break
       - name: useless-break
         disabled: false
+  spancheck:
+    # https://github.com/jjti/go-spancheck#checks
+    checks:
+      - end
+      # - record-error # check that `span.RecordError(err)` is called when an error is returned
+      # - set-status   # check that `span.SetStatus(codes.Error, msg)` is called when an error is returned
   staticcheck:
     # https://staticcheck.io/docs/options#checks
     checks:
@@ -172,3 +201,14 @@ linters-settings:
     strict: true
     order:
       - serialize
+  testifylint:
+    # Enable all checkers (https://github.com/Antonboom/testifylint#checkers).
+    # Default: false
+    enable-all: true
+    # Disable checkers by name
+    # (in addition to default
+    #   suite-thelper
+    # ).
+    disable:
+      - go-require
+      - float-compare

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package gvalidators
@@ -10,11 +10,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
 	"go.uber.org/mock/gomock"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/snow/validators"
+	"github.com/ava-labs/avalanchego/snow/validators/validatorsmock"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/vms/rpcchainvm/grpcutils"
 
@@ -24,9 +24,8 @@ import (
 var errCustom = errors.New("custom")
 
 type testState struct {
-	client  *Client
-	server  *validators.MockState
-	closeFn func()
+	client *Client
+	server *validatorsmock.State
 }
 
 func setupState(t testing.TB, ctrl *gomock.Controller) *testState {
@@ -35,7 +34,7 @@ func setupState(t testing.TB, ctrl *gomock.Controller) *testState {
 	t.Helper()
 
 	state := &testState{
-		server: validators.NewMockState(ctrl),
+		server: validatorsmock.NewState(ctrl),
 	}
 
 	listener, err := grpcutils.NewListener()
@@ -52,11 +51,13 @@ func setupState(t testing.TB, ctrl *gomock.Controller) *testState {
 	require.NoError(err)
 
 	state.client = NewClient(pb.NewValidatorStateClient(conn))
-	state.closeFn = func() {
+
+	t.Cleanup(func() {
 		serverCloser.Stop()
 		_ = conn.Close()
 		_ = listener.Close()
-	}
+	})
+
 	return state
 }
 
@@ -65,7 +66,6 @@ func TestGetMinimumHeight(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	state := setupState(t, ctrl)
-	defer state.closeFn()
 
 	// Happy path
 	expectedHeight := uint64(1337)
@@ -88,7 +88,6 @@ func TestGetCurrentHeight(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	state := setupState(t, ctrl)
-	defer state.closeFn()
 
 	// Happy path
 	expectedHeight := uint64(1337)
@@ -111,7 +110,6 @@ func TestGetSubnetID(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	state := setupState(t, ctrl)
-	defer state.closeFn()
 
 	// Happy path
 	chainID := ids.GenerateTestID()
@@ -135,22 +133,21 @@ func TestGetValidatorSet(t *testing.T) {
 	ctrl := gomock.NewController(t)
 
 	state := setupState(t, ctrl)
-	defer state.closeFn()
 
 	// Happy path
-	sk0, err := bls.NewSecretKey()
+	sk0, err := bls.NewSigner()
 	require.NoError(err)
 	vdr0 := &validators.GetValidatorOutput{
 		NodeID:    ids.GenerateTestNodeID(),
-		PublicKey: bls.PublicFromSecretKey(sk0),
+		PublicKey: sk0.PublicKey(),
 		Weight:    1,
 	}
 
-	sk1, err := bls.NewSecretKey()
+	sk1, err := bls.NewSigner()
 	require.NoError(err)
 	vdr1 := &validators.GetValidatorOutput{
 		NodeID:    ids.GenerateTestNodeID(),
-		PublicKey: bls.PublicFromSecretKey(sk1),
+		PublicKey: sk1.PublicKey(),
 		Weight:    2,
 	}
 
@@ -184,12 +181,12 @@ func TestGetValidatorSet(t *testing.T) {
 func TestPublicKeyDeserialize(t *testing.T) {
 	require := require.New(t)
 
-	sk, err := bls.NewSecretKey()
+	sk, err := bls.NewSigner()
 	require.NoError(err)
-	pk := bls.PublicFromSecretKey(sk)
+	pk := sk.PublicKey()
 
-	pkBytes := bls.SerializePublicKey(pk)
-	pkDe := bls.DeserializePublicKey(pkBytes)
+	pkBytes := bls.PublicKeyToUncompressedBytes(pk)
+	pkDe := bls.PublicKeyFromValidUncompressedBytes(pkBytes)
 	require.NotNil(pkDe)
 	require.Equal(pk, pkDe)
 }
@@ -209,9 +206,6 @@ func benchmarkGetValidatorSet(b *testing.B, vs map[ids.NodeID]*validators.GetVal
 	require := require.New(b)
 	ctrl := gomock.NewController(b)
 	state := setupState(b, ctrl)
-	defer func() {
-		state.closeFn()
-	}()
 
 	height := uint64(1337)
 	subnetID := ids.GenerateTestID()
@@ -228,9 +222,9 @@ func setupValidatorSet(b *testing.B, size int) map[ids.NodeID]*validators.GetVal
 	b.Helper()
 
 	set := make(map[ids.NodeID]*validators.GetValidatorOutput, size)
-	sk, err := bls.NewSecretKey()
+	sk, err := bls.NewSigner()
 	require.NoError(b, err)
-	pk := bls.PublicFromSecretKey(sk)
+	pk := sk.PublicKey()
 	for i := 0; i < size; i++ {
 		id := ids.GenerateTestNodeID()
 		set[id] = &validators.GetValidatorOutput{

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package message
@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/stretchr/testify/require"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/proto/pb/p2p"
+	"github.com/ava-labs/avalanchego/utils/compression"
 	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/utils/timer/mockable"
 )
@@ -23,7 +23,6 @@ func Test_newMsgBuilder(t *testing.T) {
 
 	mb, err := newMsgBuilder(
 		logging.NoLog{},
-		"test",
 		prometheus.NewRegistry(),
 		10*time.Second,
 	)
@@ -45,7 +44,6 @@ func TestInboundMsgBuilder(t *testing.T) {
 		acceptedContainerID        = ids.GenerateTestID()
 		summaryIDs                 = []ids.ID{ids.GenerateTestID(), ids.GenerateTestID()}
 		heights                    = []uint64{1000, 2000}
-		engineType                 = p2p.EngineType_ENGINE_TYPE_SNOWMAN
 	)
 
 	t.Run(
@@ -162,7 +160,6 @@ func TestInboundMsgBuilder(t *testing.T) {
 				requestID,
 				deadline,
 				nodeID,
-				engineType,
 			)
 			end := time.Now()
 
@@ -174,7 +171,6 @@ func TestInboundMsgBuilder(t *testing.T) {
 			innerMsg := msg.Message().(*p2p.GetAcceptedFrontier)
 			require.Equal(chainID[:], innerMsg.ChainId)
 			require.Equal(requestID, innerMsg.RequestId)
-			require.Equal(engineType, innerMsg.EngineType)
 		},
 	)
 
@@ -213,7 +209,6 @@ func TestInboundMsgBuilder(t *testing.T) {
 				deadline,
 				containerIDs,
 				nodeID,
-				engineType,
 			)
 			end := time.Now()
 
@@ -225,7 +220,6 @@ func TestInboundMsgBuilder(t *testing.T) {
 			innerMsg := msg.Message().(*p2p.GetAccepted)
 			require.Equal(chainID[:], innerMsg.ChainId)
 			require.Equal(requestID, innerMsg.RequestId)
-			require.Equal(engineType, innerMsg.EngineType)
 		},
 	)
 
@@ -270,7 +264,6 @@ func TestInboundMsgBuilder(t *testing.T) {
 				container,
 				requestedHeight,
 				nodeID,
-				engineType,
 			)
 			end := time.Now()
 
@@ -284,7 +277,6 @@ func TestInboundMsgBuilder(t *testing.T) {
 			require.Equal(requestID, innerMsg.RequestId)
 			require.Equal(container, innerMsg.Container)
 			require.Equal(requestedHeight, innerMsg.RequestedHeight)
-			require.Equal(engineType, innerMsg.EngineType)
 		},
 	)
 
@@ -301,7 +293,6 @@ func TestInboundMsgBuilder(t *testing.T) {
 				containerIDs[0],
 				requestedHeight,
 				nodeID,
-				engineType,
 			)
 			end := time.Now()
 
@@ -315,7 +306,6 @@ func TestInboundMsgBuilder(t *testing.T) {
 			require.Equal(requestID, innerMsg.RequestId)
 			require.Equal(containerIDs[0][:], innerMsg.ContainerId)
 			require.Equal(requestedHeight, innerMsg.RequestedHeight)
-			require.Equal(engineType, innerMsg.EngineType)
 		},
 	)
 
@@ -395,4 +385,46 @@ func TestInboundMsgBuilder(t *testing.T) {
 			require.Equal(appBytes, innerMsg.AppBytes)
 		},
 	)
+}
+
+func TestAppError(t *testing.T) {
+	require := require.New(t)
+
+	mb, err := newMsgBuilder(
+		logging.NoLog{},
+		prometheus.NewRegistry(),
+		time.Second,
+	)
+	require.NoError(err)
+
+	nodeID := ids.GenerateTestNodeID()
+	chainID := ids.GenerateTestID()
+	requestID := uint32(1)
+	errorCode := int32(2)
+	errorMessage := "hello world"
+
+	want := &p2p.Message{
+		Message: &p2p.Message_AppError{
+			AppError: &p2p.AppError{
+				ChainId:      chainID[:],
+				RequestId:    requestID,
+				ErrorCode:    errorCode,
+				ErrorMessage: errorMessage,
+			},
+		},
+	}
+
+	outMsg, err := mb.createOutbound(want, compression.TypeNone, false)
+	require.NoError(err)
+
+	got, err := mb.parseInbound(outMsg.Bytes(), nodeID, func() {})
+	require.NoError(err)
+
+	require.Equal(nodeID, got.NodeID())
+	require.Equal(AppErrorOp, got.Op())
+
+	msg, ok := got.Message().(*p2p.AppError)
+	require.True(ok)
+	require.Equal(errorCode, msg.ErrorCode)
+	require.Equal(errorMessage, msg.ErrorMessage)
 }

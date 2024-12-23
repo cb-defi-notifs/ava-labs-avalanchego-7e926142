@@ -1,25 +1,24 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package throttling
 
 import (
-	"net"
+	"net/netip"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ava-labs/avalanchego/utils/ips"
 	"github.com/ava-labs/avalanchego/utils/logging"
 )
 
 var (
-	host1      = ips.IPPort{IP: net.IPv4(1, 2, 3, 4), Port: 9651}
-	host2      = ips.IPPort{IP: net.IPv4(1, 2, 3, 5), Port: 9653}
-	host3      = ips.IPPort{IP: net.IPv4(1, 2, 3, 6), Port: 9655}
-	host4      = ips.IPPort{IP: net.IPv4(1, 2, 3, 7), Port: 9657}
-	loopbackIP = ips.IPPort{IP: net.IPv4(127, 0, 0, 1), Port: 9657}
+	host1      = netip.AddrPortFrom(netip.AddrFrom4([4]byte{1, 2, 3, 4}), 9651)
+	host2      = netip.AddrPortFrom(netip.AddrFrom4([4]byte{1, 2, 3, 5}), 9653)
+	host3      = netip.AddrPortFrom(netip.AddrFrom4([4]byte{1, 2, 3, 6}), 9655)
+	host4      = netip.AddrPortFrom(netip.AddrFrom4([4]byte{1, 2, 3, 7}), 9657)
+	loopbackIP = netip.AddrPortFrom(netip.AddrFrom4([4]byte{127, 0, 0, 1}), 9657)
 )
 
 func TestNoInboundConnUpgradeThrottler(t *testing.T) {

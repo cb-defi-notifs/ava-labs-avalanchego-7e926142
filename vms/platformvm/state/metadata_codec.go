@@ -1,9 +1,10 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package state
 
 import (
+	"errors"
 	"math"
 
 	"github.com/ava-labs/avalanchego/codec"
@@ -11,17 +12,24 @@ import (
 )
 
 const (
-	v0tag = "v0"
-	v0    = uint16(0)
+	CodecVersion0Tag        = "v0"
+	CodecVersion0    uint16 = 0
+
+	CodecVersion1Tag        = "v1"
+	CodecVersion1    uint16 = 1
 )
 
-var metadataCodec codec.Manager
+var MetadataCodec codec.Manager
 
 func init() {
-	c := linearcodec.New([]string{v0tag}, math.MaxInt32)
-	metadataCodec = codec.NewManager(math.MaxInt32)
+	c0 := linearcodec.New([]string{CodecVersion0Tag})
+	c1 := linearcodec.New([]string{CodecVersion0Tag, CodecVersion1Tag})
+	MetadataCodec = codec.NewManager(math.MaxInt32)
 
-	err := metadataCodec.RegisterCodec(v0, c)
+	err := errors.Join(
+		MetadataCodec.RegisterCodec(CodecVersion0, c0),
+		MetadataCodec.RegisterCodec(CodecVersion1, c1),
+	)
 	if err != nil {
 		panic(err)
 	}

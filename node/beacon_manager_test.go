@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package node
@@ -8,14 +8,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
 	"go.uber.org/mock/gomock"
 
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/snow/networking/router"
+	"github.com/ava-labs/avalanchego/snow/networking/router/routermock"
 	"github.com/ava-labs/avalanchego/snow/validators"
 	"github.com/ava-labs/avalanchego/utils/constants"
-	"github.com/ava-labs/avalanchego/utils/timer"
 	"github.com/ava-labs/avalanchego/version"
 )
 
@@ -38,13 +36,13 @@ func TestBeaconManager_DataRace(t *testing.T) {
 	wg := &sync.WaitGroup{}
 
 	ctrl := gomock.NewController(t)
-	mockRouter := router.NewMockRouter(ctrl)
+	mockRouter := routermock.NewRouter(ctrl)
 
 	b := beaconManager{
-		Router:        mockRouter,
-		timer:         timer.NewTimer(nil),
-		beacons:       validatorSet,
-		requiredConns: numValidators,
+		Router:                  mockRouter,
+		beacons:                 validatorSet,
+		requiredConns:           numValidators,
+		onSufficientlyConnected: make(chan struct{}),
 	}
 
 	// connect numValidators validators, each with a weight of 1

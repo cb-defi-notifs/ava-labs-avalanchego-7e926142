@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package main
@@ -15,6 +15,7 @@ import (
 	"github.com/ava-labs/avalanchego/vms/example/xsvm/cmd/issue"
 	"github.com/ava-labs/avalanchego/vms/example/xsvm/cmd/run"
 	"github.com/ava-labs/avalanchego/vms/example/xsvm/cmd/version"
+	"github.com/ava-labs/avalanchego/vms/example/xsvm/cmd/versionjson"
 )
 
 func init() {
@@ -28,6 +29,7 @@ func main() {
 		chain.Command(),
 		issue.Command(),
 		version.Command(),
+		versionjson.Command(),
 	)
 	ctx := context.Background()
 	if err := cmd.ExecuteContext(ctx); err != nil {

@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package bootstrapper
@@ -7,7 +7,6 @@ import (
 	"context"
 
 	"go.uber.org/zap"
-
 	"golang.org/x/exp/maps"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -69,7 +68,7 @@ func (m *Majority) RecordOpinion(_ context.Context, nodeID ids.NodeID, blkIDs se
 
 	weight := m.nodeWeights[nodeID]
 	for blkID := range blkIDs {
-		newWeight, err := math.Add64(m.received[blkID], weight)
+		newWeight, err := math.Add(m.received[blkID], weight)
 		if err != nil {
 			return err
 		}
@@ -85,7 +84,7 @@ func (m *Majority) RecordOpinion(_ context.Context, nodeID ids.NodeID, blkIDs se
 		err         error
 	)
 	for _, weight := range m.nodeWeights {
-		totalWeight, err = math.Add64(totalWeight, weight)
+		totalWeight, err = math.Add(totalWeight, weight)
 		if err != nil {
 			return err
 		}

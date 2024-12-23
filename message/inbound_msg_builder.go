@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package message
@@ -117,16 +117,14 @@ func InboundGetAcceptedFrontier(
 	requestID uint32,
 	deadline time.Duration,
 	nodeID ids.NodeID,
-	engineType p2p.EngineType,
 ) InboundMessage {
 	return &inboundMessage{
 		nodeID: nodeID,
 		op:     GetAcceptedFrontierOp,
 		message: &p2p.GetAcceptedFrontier{
-			ChainId:    chainID[:],
-			RequestId:  requestID,
-			Deadline:   uint64(deadline),
-			EngineType: engineType,
+			ChainId:   chainID[:],
+			RequestId: requestID,
+			Deadline:  uint64(deadline),
 		},
 		expiration: time.Now().Add(deadline),
 	}
@@ -156,7 +154,6 @@ func InboundGetAccepted(
 	deadline time.Duration,
 	containerIDs []ids.ID,
 	nodeID ids.NodeID,
-	engineType p2p.EngineType,
 ) InboundMessage {
 	containerIDBytes := make([][]byte, len(containerIDs))
 	encodeIDs(containerIDs, containerIDBytes)
@@ -168,7 +165,6 @@ func InboundGetAccepted(
 			RequestId:    requestID,
 			Deadline:     uint64(deadline),
 			ContainerIds: containerIDBytes,
-			EngineType:   engineType,
 		},
 		expiration: time.Now().Add(deadline),
 	}
@@ -201,7 +197,6 @@ func InboundPushQuery(
 	container []byte,
 	requestedHeight uint64,
 	nodeID ids.NodeID,
-	engineType p2p.EngineType,
 ) InboundMessage {
 	return &inboundMessage{
 		nodeID: nodeID,
@@ -212,7 +207,6 @@ func InboundPushQuery(
 			Deadline:        uint64(deadline),
 			Container:       container,
 			RequestedHeight: requestedHeight,
-			EngineType:      engineType,
 		},
 		expiration: time.Now().Add(deadline),
 	}
@@ -225,7 +219,6 @@ func InboundPullQuery(
 	containerID ids.ID,
 	requestedHeight uint64,
 	nodeID ids.NodeID,
-	engineType p2p.EngineType,
 ) InboundMessage {
 	return &inboundMessage{
 		nodeID: nodeID,
@@ -236,7 +229,6 @@ func InboundPullQuery(
 			Deadline:        uint64(deadline),
 			ContainerId:     containerID[:],
 			RequestedHeight: requestedHeight,
-			EngineType:      engineType,
 		},
 		expiration: time.Now().Add(deadline),
 	}
@@ -284,6 +276,26 @@ func InboundAppRequest(
 	}
 }
 
+func InboundAppError(
+	nodeID ids.NodeID,
+	chainID ids.ID,
+	requestID uint32,
+	errorCode int32,
+	errorMessage string,
+) InboundMessage {
+	return &inboundMessage{
+		nodeID: nodeID,
+		op:     AppErrorOp,
+		message: &p2p.AppError{
+			ChainId:      chainID[:],
+			RequestId:    requestID,
+			ErrorCode:    errorCode,
+			ErrorMessage: errorMessage,
+		},
+		expiration: mockable.MaxTime,
+	}
+}
+
 func InboundAppResponse(
 	chainID ids.ID,
 	requestID uint32,
@@ -304,7 +316,7 @@ func InboundAppResponse(
 
 func encodeIDs(ids []ids.ID, result [][]byte) {
 	for i, id := range ids {
-		copy := id
-		result[i] = copy[:]
+		id := id
+		result[i] = id[:]
 	}
 }

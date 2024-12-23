@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package gwarp
@@ -12,6 +12,7 @@ import (
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/crypto/bls"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
+	"github.com/ava-labs/avalanchego/vms/platformvm/warp/signertest"
 	"github.com/ava-labs/avalanchego/vms/rpcchainvm/grpcutils"
 
 	pb "github.com/ava-labs/avalanchego/proto/pb/warp"
@@ -20,16 +21,15 @@ import (
 type testSigner struct {
 	client    *Client
 	server    warp.Signer
-	sk        *bls.SecretKey
+	sk        bls.Signer
 	networkID uint32
 	chainID   ids.ID
-	closeFn   func()
 }
 
 func setupSigner(t testing.TB) *testSigner {
 	require := require.New(t)
 
-	sk, err := bls.NewSecretKey()
+	sk, err := bls.NewSigner()
 	require.NoError(err)
 
 	chainID := ids.GenerateTestID()
@@ -55,18 +55,21 @@ func setupSigner(t testing.TB) *testSigner {
 	require.NoError(err)
 
 	s.client = NewClient(pb.NewSignerClient(conn))
-	s.closeFn = func() {
+
+	t.Cleanup(func() {
 		serverCloser.Stop()
 		_ = conn.Close()
 		_ = listener.Close()
-	}
+	})
+
 	return s
 }
 
 func TestInterface(t *testing.T) {
-	for _, test := range warp.SignerTests {
-		s := setupSigner(t)
-		test(t, s.client, s.sk, s.networkID, s.chainID)
-		s.closeFn()
+	for name, test := range signertest.SignerTests {
+		t.Run(name, func(t *testing.T) {
+			s := setupSigner(t)
+			test(t, s.client, s.sk, s.networkID, s.chainID)
+		})
 	}
 }

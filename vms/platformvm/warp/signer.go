@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package warp
@@ -26,7 +26,7 @@ type Signer interface {
 	Sign(msg *UnsignedMessage) ([]byte, error)
 }
 
-func NewSigner(sk *bls.SecretKey, networkID uint32, chainID ids.ID) Signer {
+func NewSigner(sk bls.Signer, networkID uint32, chainID ids.ID) Signer {
 	return &signer{
 		sk:        sk,
 		networkID: networkID,
@@ -35,7 +35,7 @@ func NewSigner(sk *bls.SecretKey, networkID uint32, chainID ids.ID) Signer {
 }
 
 type signer struct {
-	sk        *bls.SecretKey
+	sk        bls.Signer
 	networkID uint32
 	chainID   ids.ID
 }
@@ -49,6 +49,6 @@ func (s *signer) Sign(msg *UnsignedMessage) ([]byte, error) {
 	}
 
 	msgBytes := msg.Bytes()
-	sig := bls.Sign(s.sk, msgBytes)
+	sig := s.sk.Sign(msgBytes)
 	return bls.SignatureToBytes(sig), nil
 }

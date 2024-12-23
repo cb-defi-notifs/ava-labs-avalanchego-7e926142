@@ -1,13 +1,11 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package linkeddb
 
 import (
+	"slices"
 	"sync"
-
-	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 
 	"github.com/ava-labs/avalanchego/cache"
 	"github.com/ava-labs/avalanchego/database"
@@ -110,6 +108,8 @@ func (ldb *linkedDB) Put(key, value []byte) error {
 	}
 
 	// The key isn't currently in the list, so we should add it as the head.
+	// Note we will copy the key so it's safe to store references to it.
+	key = slices.Clone(key)
 	newHead := node{Value: slices.Clone(value)}
 	if headKey, err := ldb.getHeadKey(); err == nil {
 		// The list currently has a head, so we need to update the old head.
@@ -316,7 +316,7 @@ func (ldb *linkedDB) getNode(key []byte) (node, error) {
 		return node{}, err
 	}
 	n := node{}
-	_, err = c.Unmarshal(nodeBytes, &n)
+	_, err = Codec.Unmarshal(nodeBytes, &n)
 	if err == nil {
 		ldb.nodeCache.Put(keyStr, &n)
 	}
@@ -325,7 +325,7 @@ func (ldb *linkedDB) getNode(key []byte) (node, error) {
 
 func (ldb *linkedDB) putNode(key []byte, n node) error {
 	ldb.updatedNodes[string(key)] = &n
-	nodeBytes, err := c.Marshal(codecVersion, n)
+	nodeBytes, err := Codec.Marshal(CodecVersion, n)
 	if err != nil {
 		return err
 	}
@@ -339,7 +339,7 @@ func (ldb *linkedDB) deleteNode(key []byte) error {
 
 func (ldb *linkedDB) resetBatch() {
 	ldb.headKeyIsUpdated = false
-	maps.Clear(ldb.updatedNodes)
+	clear(ldb.updatedNodes)
 	ldb.batch.Reset()
 }
 

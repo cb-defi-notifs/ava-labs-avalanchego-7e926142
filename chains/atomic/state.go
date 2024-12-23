@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package atomic
@@ -7,12 +7,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/ava-labs/avalanchego/database"
 	"github.com/ava-labs/avalanchego/database/linkeddb"
 	"github.com/ava-labs/avalanchego/database/prefixdb"
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/utils"
 	"github.com/ava-labs/avalanchego/utils/hashing"
 	"github.com/ava-labs/avalanchego/utils/set"
 )
@@ -111,7 +111,7 @@ func (s *state) SetValue(e *Element) error {
 		Traits:  e.Traits,
 	}
 
-	valueBytes, err := codecManager.Marshal(codecVersion, &dbElem)
+	valueBytes, err := Codec.Marshal(CodecVersion, &dbElem)
 	if err != nil {
 		return err
 	}
@@ -147,19 +147,17 @@ func (s *state) SetValue(e *Element) error {
 // current engine state.
 func (s *state) RemoveValue(key []byte) error {
 	value, err := s.loadValue(key)
-	if err != nil {
-		if err != database.ErrNotFound {
-			// An unexpected error occurred, so we should propagate that error
-			return err
-		}
-
+	if err == database.ErrNotFound {
 		// The value doesn't exist, so we should optimistically delete it
 		dbElem := dbElement{Present: false}
-		valueBytes, err := codecManager.Marshal(codecVersion, &dbElem)
+		valueBytes, err := Codec.Marshal(CodecVersion, &dbElem)
 		if err != nil {
 			return err
 		}
 		return s.valueDB.Put(key, valueBytes)
+	}
+	if err != nil {
+		return err
 	}
 
 	// Don't allow the removal of something that was already removed.
@@ -188,7 +186,7 @@ func (s *state) loadValue(key []byte) (*dbElement, error) {
 
 	// The key was in the database
 	value := &dbElement{}
-	_, err = codecManager.Unmarshal(valueBytes, value)
+	_, err = Codec.Unmarshal(valueBytes, value)
 	return value, err
 }
 
@@ -207,7 +205,7 @@ func (s *state) getKeys(traits [][]byte, startTrait, startKey []byte, limit int)
 	lastKey := startKey
 	// Iterate over the traits in order appending all of the keys that possess
 	// the given [traits].
-	utils.SortBytes(traits)
+	slices.SortFunc(traits, bytes.Compare)
 	for _, trait := range traits {
 		switch bytes.Compare(trait, startTrait) {
 		case -1:

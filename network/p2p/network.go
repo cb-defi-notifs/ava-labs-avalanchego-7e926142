@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package p2p
@@ -6,6 +6,8 @@ package p2p
 import (
 	"context"
 	"encoding/binary"
+	"errors"
+	"strconv"
 	"sync"
 	"time"
 
@@ -23,6 +25,10 @@ var (
 	_ validators.Connector = (*Network)(nil)
 	_ common.AppHandler    = (*Network)(nil)
 	_ NodeSampler          = (*peerSampler)(nil)
+
+	opLabel      = "op"
+	handlerLabel = "handlerID"
+	labelNames   = []string{opLabel, handlerLabel}
 )
 
 // ClientOption configures Client
@@ -53,17 +59,42 @@ type clientOptions struct {
 func NewNetwork(
 	log logging.Logger,
 	sender common.AppSender,
-	metrics prometheus.Registerer,
+	registerer prometheus.Registerer,
 	namespace string,
-) *Network {
-	return &Network{
-		Peers:     &Peers{},
-		log:       log,
-		sender:    sender,
-		metrics:   metrics,
-		namespace: namespace,
-		router:    newRouter(log, sender, metrics, namespace),
+) (*Network, error) {
+	metrics := metrics{
+		msgTime: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "msg_time",
+				Help:      "message handling time (ns)",
+			},
+			labelNames,
+		),
+		msgCount: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Name:      "msg_count",
+				Help:      "message count (n)",
+			},
+			labelNames,
+		),
 	}
+
+	err := errors.Join(
+		registerer.Register(metrics.msgTime),
+		registerer.Register(metrics.msgCount),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Network{
+		Peers:  &Peers{},
+		log:    log,
+		sender: sender,
+		router: newRouter(log, sender, metrics),
+	}, nil
 }
 
 // Network exposes networking state and supports building p2p application
@@ -71,10 +102,8 @@ func NewNetwork(
 type Network struct {
 	Peers *Peers
 
-	log       logging.Logger
-	sender    common.AppSender
-	metrics   prometheus.Registerer
-	namespace string
+	log    logging.Logger
+	sender common.AppSender
 
 	router *router
 }
@@ -87,24 +116,12 @@ func (n *Network) AppResponse(ctx context.Context, nodeID ids.NodeID, requestID 
 	return n.router.AppResponse(ctx, nodeID, requestID, response)
 }
 
-func (n *Network) AppRequestFailed(ctx context.Context, nodeID ids.NodeID, requestID uint32) error {
-	return n.router.AppRequestFailed(ctx, nodeID, requestID)
+func (n *Network) AppRequestFailed(ctx context.Context, nodeID ids.NodeID, requestID uint32, appErr *common.AppError) error {
+	return n.router.AppRequestFailed(ctx, nodeID, requestID, appErr)
 }
 
 func (n *Network) AppGossip(ctx context.Context, nodeID ids.NodeID, msg []byte) error {
 	return n.router.AppGossip(ctx, nodeID, msg)
-}
-
-func (n *Network) CrossChainAppRequest(ctx context.Context, chainID ids.ID, requestID uint32, deadline time.Time, request []byte) error {
-	return n.router.CrossChainAppRequest(ctx, chainID, requestID, deadline, request)
-}
-
-func (n *Network) CrossChainAppResponse(ctx context.Context, chainID ids.ID, requestID uint32, response []byte) error {
-	return n.router.CrossChainAppResponse(ctx, chainID, requestID, response)
-}
-
-func (n *Network) CrossChainAppRequestFailed(ctx context.Context, chainID ids.ID, requestID uint32) error {
-	return n.router.CrossChainAppRequestFailed(ctx, chainID, requestID)
 }
 
 func (n *Network) Connected(_ context.Context, nodeID ids.NodeID, _ *version.Application) error {
@@ -117,17 +134,13 @@ func (n *Network) Disconnected(_ context.Context, nodeID ids.NodeID) error {
 	return nil
 }
 
-// NewAppProtocol reserves an identifier for an application protocol handler and
-// returns a Client that can be used to send messages for the corresponding
-// protocol.
-func (n *Network) NewAppProtocol(handlerID uint64, handler Handler, options ...ClientOption) (*Client, error) {
-	if err := n.router.addHandler(handlerID, handler); err != nil {
-		return nil, err
-	}
-
+// NewClient returns a Client that can be used to send messages for the
+// corresponding protocol.
+func (n *Network) NewClient(handlerID uint64, options ...ClientOption) *Client {
 	client := &Client{
 		handlerID:     handlerID,
-		handlerPrefix: binary.AppendUvarint(nil, handlerID),
+		handlerIDStr:  strconv.FormatUint(handlerID, 10),
+		handlerPrefix: ProtocolPrefix(handlerID),
 		sender:        n.sender,
 		router:        n.router,
 		options: &clientOptions{
@@ -141,7 +154,12 @@ func (n *Network) NewAppProtocol(handlerID uint64, handler Handler, options ...C
 		option.apply(client.options)
 	}
 
-	return client, nil
+	return client
+}
+
+// AddHandler reserves an identifier for an application protocol
+func (n *Network) AddHandler(handlerID uint64, handler Handler) error {
+	return n.router.addHandler(handlerID, handler)
 }
 
 // Peers contains metadata about the current set of connected peers
@@ -185,4 +203,8 @@ type peerSampler struct {
 
 func (p peerSampler) Sample(_ context.Context, limit int) []ids.NodeID {
 	return p.peers.Sample(limit)
+}
+
+func ProtocolPrefix(handlerID uint64) []byte {
+	return binary.AppendUvarint(nil, handlerID)
 }

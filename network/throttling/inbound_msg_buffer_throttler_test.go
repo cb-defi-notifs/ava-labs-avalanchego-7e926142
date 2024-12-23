@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package throttling
@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/stretchr/testify/require"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -18,7 +17,7 @@ import (
 // Test inboundMsgBufferThrottler
 func TestMsgBufferThrottler(t *testing.T) {
 	require := require.New(t)
-	throttler, err := newInboundMsgBufferThrottler("", prometheus.NewRegistry(), 3)
+	throttler, err := newInboundMsgBufferThrottler(prometheus.NewRegistry(), 3)
 	require.NoError(err)
 
 	nodeID1, nodeID2 := ids.GenerateTestNodeID(), ids.GenerateTestNodeID()
@@ -70,7 +69,7 @@ func TestMsgBufferThrottler(t *testing.T) {
 // Test inboundMsgBufferThrottler when an acquire is cancelled
 func TestMsgBufferThrottlerContextCancelled(t *testing.T) {
 	require := require.New(t)
-	throttler, err := newInboundMsgBufferThrottler("", prometheus.NewRegistry(), 3)
+	throttler, err := newInboundMsgBufferThrottler(prometheus.NewRegistry(), 3)
 	require.NoError(err)
 
 	vdr1Context, vdr1ContextCancelFunc := context.WithCancel(context.Background())

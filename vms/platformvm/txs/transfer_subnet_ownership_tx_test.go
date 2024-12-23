@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package txs
@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
 	"go.uber.org/mock/gomock"
 
 	"github.com/ava-labs/avalanchego/ids"
@@ -17,8 +16,8 @@ import (
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/units"
 	"github.com/ava-labs/avalanchego/vms/components/avax"
-	"github.com/ava-labs/avalanchego/vms/components/verify"
-	"github.com/ava-labs/avalanchego/vms/platformvm/fx"
+	"github.com/ava-labs/avalanchego/vms/components/verify/verifymock"
+	"github.com/ava-labs/avalanchego/vms/platformvm/fx/fxmock"
 	"github.com/ava-labs/avalanchego/vms/platformvm/stakeable"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 	"github.com/ava-labs/avalanchego/vms/types"
@@ -164,7 +163,7 @@ func TestTransferSubnetOwnershipTxSerialization(t *testing.T) {
 		0x44, 0x55, 0x66, 0x77,
 	}
 	var unsignedSimpleTransferSubnetOwnershipTx UnsignedTx = simpleTransferSubnetOwnershipTx
-	unsignedSimpleTransferSubnetOwnershipTxBytes, err := Codec.Marshal(Version, &unsignedSimpleTransferSubnetOwnershipTx)
+	unsignedSimpleTransferSubnetOwnershipTxBytes, err := Codec.Marshal(CodecVersion, &unsignedSimpleTransferSubnetOwnershipTx)
 	require.NoError(err)
 	require.Equal(expectedUnsignedSimpleTransferSubnetOwnershipTxBytes, unsignedSimpleTransferSubnetOwnershipTxBytes)
 
@@ -438,7 +437,7 @@ func TestTransferSubnetOwnershipTxSerialization(t *testing.T) {
 		0x44, 0x55, 0x66, 0x77,
 	}
 	var unsignedComplexTransferSubnetOwnershipTx UnsignedTx = complexTransferSubnetOwnershipTx
-	unsignedComplexTransferSubnetOwnershipTxBytes, err := Codec.Marshal(Version, &unsignedComplexTransferSubnetOwnershipTx)
+	unsignedComplexTransferSubnetOwnershipTxBytes, err := Codec.Marshal(CodecVersion, &unsignedComplexTransferSubnetOwnershipTx)
 	require.NoError(err)
 	require.Equal(expectedUnsignedComplexTransferSubnetOwnershipTxBytes, unsignedComplexTransferSubnetOwnershipTxBytes)
 
@@ -621,7 +620,7 @@ func TestTransferSubnetOwnershipTxSyntacticVerify(t *testing.T) {
 			name: "invalid subnetAuth",
 			txFunc: func(ctrl *gomock.Controller) *TransferSubnetOwnershipTx {
 				// This SubnetAuth fails verification.
-				invalidSubnetAuth := verify.NewMockVerifiable(ctrl)
+				invalidSubnetAuth := verifymock.NewVerifiable(ctrl)
 				invalidSubnetAuth.EXPECT().Verify().Return(errInvalidSubnetAuth)
 				return &TransferSubnetOwnershipTx{
 					// Set subnetID so we don't error on that check.
@@ -636,9 +635,9 @@ func TestTransferSubnetOwnershipTxSyntacticVerify(t *testing.T) {
 			name: "passes verification",
 			txFunc: func(ctrl *gomock.Controller) *TransferSubnetOwnershipTx {
 				// This SubnetAuth passes verification.
-				validSubnetAuth := verify.NewMockVerifiable(ctrl)
+				validSubnetAuth := verifymock.NewVerifiable(ctrl)
 				validSubnetAuth.EXPECT().Verify().Return(nil)
-				mockOwner := fx.NewMockOwner(ctrl)
+				mockOwner := fxmock.NewOwner(ctrl)
 				mockOwner.EXPECT().Verify().Return(nil)
 				return &TransferSubnetOwnershipTx{
 					// Set subnetID so we don't error on that check.

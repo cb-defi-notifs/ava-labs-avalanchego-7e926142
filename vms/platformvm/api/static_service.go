@@ -1,9 +1,10 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package api
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"net/http"
@@ -50,30 +51,25 @@ type UTXO struct {
 }
 
 // TODO can we define this on *UTXO?
-func (utxo UTXO) Less(other UTXO) bool {
-	if utxo.Locktime < other.Locktime {
-		return true
-	} else if utxo.Locktime > other.Locktime {
-		return false
+func (utxo UTXO) Compare(other UTXO) int {
+	if locktimeCmp := cmp.Compare(utxo.Locktime, other.Locktime); locktimeCmp != 0 {
+		return locktimeCmp
 	}
-
-	if utxo.Amount < other.Amount {
-		return true
-	} else if utxo.Amount > other.Amount {
-		return false
+	if amountCmp := cmp.Compare(utxo.Amount, other.Amount); amountCmp != 0 {
+		return amountCmp
 	}
 
 	utxoAddr, err := bech32ToID(utxo.Address)
 	if err != nil {
-		return false
+		return 0
 	}
 
 	otherAddr, err := bech32ToID(other.Address)
 	if err != nil {
-		return false
+		return 0
 	}
 
-	return utxoAddr.Less(otherAddr)
+	return utxoAddr.Compare(otherAddr)
 }
 
 // TODO: Refactor APIStaker, APIValidators and merge them together for
@@ -125,7 +121,7 @@ type PermissionlessValidator struct {
 	DelegationFee          json.Float32              `json:"delegationFee"`
 	ExactDelegationFee     *json.Uint32              `json:"exactDelegationFee,omitempty"`
 	Uptime                 *json.Float32             `json:"uptime,omitempty"`
-	Connected              bool                      `json:"connected"`
+	Connected              *bool                     `json:"connected,omitempty"`
 	Staked                 []UTXO                    `json:"staked,omitempty"`
 	Signer                 *signer.ProofOfPossession `json:"signer,omitempty"`
 
@@ -149,7 +145,7 @@ type GenesisPermissionlessValidator struct {
 type PermissionedValidator struct {
 	Staker
 	// The owner the staking reward, if applicable, will go to
-	Connected bool          `json:"connected"`
+	Connected *bool         `json:"connected,omitempty"`
 	Uptime    *json.Float32 `json:"uptime,omitempty"`
 }
 
@@ -200,7 +196,7 @@ type BuildGenesisReply struct {
 	Encoding formatting.Encoding `json:"encoding"`
 }
 
-// beck32ToID takes bech32 address and produces a shortID
+// bech32ToID takes bech32 address and produces a shortID
 func bech32ToID(addrStr string) (ids.ShortID, error) {
 	_, addrBytes, err := address.ParseBech32(addrStr)
 	if err != nil {
@@ -284,7 +280,7 @@ func (*StaticService) BuildGenesis(_ *http.Request, args *BuildGenesisArgs, repl
 			}
 			stake[i] = utxo
 
-			newWeight, err := math.Add64(weight, uint64(apiUTXO.Amount))
+			newWeight, err := math.Add(weight, uint64(apiUTXO.Amount))
 			if err != nil {
 				return errStakeOverflow
 			}
@@ -395,7 +391,7 @@ func (*StaticService) BuildGenesis(_ *http.Request, args *BuildGenesisArgs, repl
 	}
 
 	// Marshal genesis to bytes
-	bytes, err := genesis.Codec.Marshal(genesis.Version, g)
+	bytes, err := genesis.Codec.Marshal(genesis.CodecVersion, g)
 	if err != nil {
 		return fmt.Errorf("couldn't marshal genesis: %w", err)
 	}

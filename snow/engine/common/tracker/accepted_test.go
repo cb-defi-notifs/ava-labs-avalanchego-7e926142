@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package tracker
@@ -20,30 +20,32 @@ func TestAccepted(t *testing.T) {
 
 	a := NewAccepted()
 
-	_, ok := a.LastAccepted(nodeID)
+	_, _, ok := a.LastAccepted(nodeID)
 	require.False(ok)
 
-	a.SetLastAccepted(nodeID, blkID0)
-	_, ok = a.LastAccepted(nodeID)
+	a.SetLastAccepted(nodeID, blkID0, 13)
+	_, _, ok = a.LastAccepted(nodeID)
 	require.False(ok)
 
 	a.OnValidatorAdded(nodeID, nil, ids.GenerateTestID(), 1)
 
-	_, ok = a.LastAccepted(nodeID)
+	_, _, ok = a.LastAccepted(nodeID)
 	require.False(ok)
 
-	a.SetLastAccepted(nodeID, blkID0)
-	blkID, ok := a.LastAccepted(nodeID)
+	a.SetLastAccepted(nodeID, blkID0, 11)
+	blkID, height, ok := a.LastAccepted(nodeID)
 	require.True(ok)
 	require.Equal(blkID0, blkID)
+	require.Equal(uint64(11), height)
 
-	a.SetLastAccepted(nodeID, blkID1)
-	blkID, ok = a.LastAccepted(nodeID)
+	a.SetLastAccepted(nodeID, blkID1, 12)
+	blkID, height, ok = a.LastAccepted(nodeID)
 	require.True(ok)
 	require.Equal(blkID1, blkID)
+	require.Equal(uint64(12), height)
 
 	a.OnValidatorRemoved(nodeID, 1)
 
-	_, ok = a.LastAccepted(nodeID)
+	_, _, ok = a.LastAccepted(nodeID)
 	require.False(ok)
 }

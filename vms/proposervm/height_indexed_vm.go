@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package proposervm
@@ -11,64 +11,12 @@ import (
 
 	"github.com/ava-labs/avalanchego/database"
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/snow/engine/snowman/block"
 )
 
 const pruneCommitPeriod = 1024
 
-// shouldHeightIndexBeRepaired checks if index needs repairing and stores a
-// checkpoint if repairing is needed.
-//
-// vm.ctx.Lock should be held
-func (vm *VM) shouldHeightIndexBeRepaired(ctx context.Context) (bool, error) {
-	_, err := vm.State.GetCheckpoint()
-	if err != database.ErrNotFound {
-		return true, err
-	}
-
-	// no checkpoint. Either index is complete or repair was never attempted.
-	// index is complete iff lastAcceptedBlock is indexed
-	latestProBlkID, err := vm.State.GetLastAccepted()
-	if err == database.ErrNotFound {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-
-	lastAcceptedBlk, err := vm.getPostForkBlock(ctx, latestProBlkID)
-	if err != nil {
-		// Could not retrieve last accepted block.
-		return false, err
-	}
-
-	_, err = vm.State.GetBlockIDAtHeight(lastAcceptedBlk.Height())
-	if err != database.ErrNotFound {
-		return false, err
-	}
-
-	// Index needs repairing. Mark the checkpoint so that, in case new blocks
-	// are accepted after the lock is released here but before indexing has
-	// started, we do not miss rebuilding the full index.
-	return true, vm.State.SetCheckpoint(latestProBlkID)
-}
-
-// vm.ctx.Lock should be held
-func (vm *VM) VerifyHeightIndex(context.Context) error {
-	if !vm.hIndexer.IsRepaired() {
-		return block.ErrIndexIncomplete
-	}
-	return nil
-}
-
 // vm.ctx.Lock should be held
 func (vm *VM) GetBlockIDAtHeight(ctx context.Context, height uint64) (ids.ID, error) {
-	if !vm.hIndexer.IsRepaired() {
-		return ids.Empty, block.ErrIndexIncomplete
-	}
-
-	// The indexer will only report that the index has been repaired if the
-	// underlying VM supports indexing.
 	switch forkHeight, err := vm.State.GetForkHeight(); err {
 	case nil:
 		if height < forkHeight {
@@ -85,32 +33,7 @@ func (vm *VM) GetBlockIDAtHeight(ctx context.Context, height uint64) (ids.ID, er
 	}
 }
 
-// As postFork blocks/options are accepted, height index is updated even if its
-// repairing is ongoing. vm.ctx.Lock should be held
 func (vm *VM) updateHeightIndex(height uint64, blkID ids.ID) error {
-	_, err := vm.State.GetCheckpoint()
-	switch err {
-	case nil:
-		// Index rebuilding is ongoing. We can update the index with the current
-		// block.
-
-	case database.ErrNotFound:
-		// No checkpoint means indexing has either not started or is already
-		// done.
-		if !vm.hIndexer.IsRepaired() {
-			return nil
-		}
-
-		// Indexing must have finished. We can update the index with the current
-		// block.
-
-	default:
-		return fmt.Errorf("failed to load index checkpoint: %w", err)
-	}
-	return vm.storeHeightEntry(height, blkID)
-}
-
-func (vm *VM) storeHeightEntry(height uint64, blkID ids.ID) error {
 	forkHeight, err := vm.State.GetForkHeight()
 	switch err {
 	case nil:
@@ -136,7 +59,7 @@ func (vm *VM) storeHeightEntry(height uint64, blkID ids.ID) error {
 		zap.Uint64("height", height),
 	)
 
-	if vm.numHistoricalBlocks == 0 {
+	if vm.NumHistoricalBlocks == 0 {
 		return nil
 	}
 
@@ -145,13 +68,13 @@ func (vm *VM) storeHeightEntry(height uint64, blkID ids.ID) error {
 	// is why <= is used rather than <. This prevents the user from only storing
 	// the last accepted block, which can never be safe due to the non-atomic
 	// commits between the proposervm database and the innerVM's database.
-	if blocksSinceFork <= vm.numHistoricalBlocks {
+	if blocksSinceFork <= vm.NumHistoricalBlocks {
 		return nil
 	}
 
 	// Note: heightToDelete is >= forkHeight, so it is guaranteed not to
 	// underflow.
-	heightToDelete := height - vm.numHistoricalBlocks - 1
+	heightToDelete := height - vm.NumHistoricalBlocks - 1
 	blockToDelete, err := vm.State.GetBlockIDAtHeight(heightToDelete)
 	if err == database.ErrNotFound {
 		// Block may have already been deleted. This can happen due to a
@@ -180,7 +103,7 @@ func (vm *VM) storeHeightEntry(height uint64, blkID ids.ID) error {
 
 // TODO: Support async deletion of old blocks.
 func (vm *VM) pruneOldBlocks() error {
-	if vm.numHistoricalBlocks == 0 {
+	if vm.NumHistoricalBlocks == 0 {
 		return nil
 	}
 
@@ -194,7 +117,7 @@ func (vm *VM) pruneOldBlocks() error {
 	//
 	// Note: vm.lastAcceptedHeight is guaranteed to be >= height, so the
 	// subtraction can never underflow.
-	for vm.lastAcceptedHeight-height > vm.numHistoricalBlocks {
+	for vm.lastAcceptedHeight-height > vm.NumHistoricalBlocks {
 		blockToDelete, err := vm.State.GetBlockIDAtHeight(height)
 		if err != nil {
 			return err

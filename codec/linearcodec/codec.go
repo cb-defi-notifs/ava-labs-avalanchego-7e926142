@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package linearcodec
@@ -12,11 +12,6 @@ import (
 	"github.com/ava-labs/avalanchego/codec/reflectcodec"
 	"github.com/ava-labs/avalanchego/utils/bimap"
 	"github.com/ava-labs/avalanchego/utils/wrappers"
-)
-
-const (
-	// default max length of a slice being marshalled by Marshal(). Should be <= math.MaxUint32.
-	DefaultMaxSliceLength = 256 * 1024
 )
 
 var (
@@ -42,25 +37,20 @@ type linearCodec struct {
 	registeredTypes *bimap.BiMap[uint32, reflect.Type]
 }
 
-// New returns a new, concurrency-safe codec; it allow to specify
-// both tagNames and maxSlicelenght
-func New(tagNames []string, maxSliceLen uint32) Codec {
+// New returns a new, concurrency-safe codec; it allow to specify tagNames.
+func New(tagNames []string) Codec {
 	hCodec := &linearCodec{
 		nextTypeID:      0,
 		registeredTypes: bimap.New[uint32, reflect.Type](),
 	}
-	hCodec.Codec = reflectcodec.New(hCodec, tagNames, maxSliceLen)
+	hCodec.Codec = reflectcodec.New(hCodec, tagNames)
 	return hCodec
 }
 
-// NewDefault is a convenience constructor; it returns a new codec with reasonable default values
+// NewDefault is a convenience constructor; it returns a new codec with default
+// tagNames.
 func NewDefault() Codec {
-	return New([]string{reflectcodec.DefaultTagName}, DefaultMaxSliceLength)
-}
-
-// NewCustomMaxLength is a convenience constructor; it returns a new codec with custom max length and default tags
-func NewCustomMaxLength(maxSliceLen uint32) Codec {
-	return New([]string{reflectcodec.DefaultTagName}, maxSliceLen)
+	return New([]string{reflectcodec.DefaultTagName})
 }
 
 // Skip some number of type IDs

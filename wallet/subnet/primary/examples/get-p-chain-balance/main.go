@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package main
@@ -8,13 +8,13 @@ import (
 	"log"
 	"time"
 
-	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/constants"
 	"github.com/ava-labs/avalanchego/utils/formatting/address"
 	"github.com/ava-labs/avalanchego/utils/set"
-	"github.com/ava-labs/avalanchego/vms/platformvm/txs"
-	"github.com/ava-labs/avalanchego/wallet/chain/p"
+	"github.com/ava-labs/avalanchego/wallet/chain/p/builder"
+	"github.com/ava-labs/avalanchego/wallet/chain/p/wallet"
 	"github.com/ava-labs/avalanchego/wallet/subnet/primary"
+	"github.com/ava-labs/avalanchego/wallet/subnet/primary/common"
 )
 
 func main() {
@@ -37,16 +37,16 @@ func main() {
 	}
 	log.Printf("fetched state of %s in %s\n", addrStr, time.Since(fetchStartTime))
 
-	pUTXOs := primary.NewChainUTXOs(constants.PlatformChainID, state.UTXOs)
-	pBackend := p.NewBackend(state.PCTX, pUTXOs, make(map[ids.ID]*txs.Tx))
-	pBuilder := p.NewBuilder(addresses, pBackend)
+	pUTXOs := common.NewChainUTXOs(constants.PlatformChainID, state.UTXOs)
+	pBackend := wallet.NewBackend(state.PCTX, pUTXOs, nil)
+	pBuilder := builder.New(addresses, state.PCTX, pBackend)
 
 	currentBalances, err := pBuilder.GetBalance()
 	if err != nil {
 		log.Fatalf("failed to get the balance: %s\n", err)
 	}
 
-	avaxID := state.PCTX.AVAXAssetID()
+	avaxID := state.PCTX.AVAXAssetID
 	avaxBalance := currentBalances[avaxID]
 	log.Printf("current AVAX balance of %s is %d nAVAX\n", addrStr, avaxBalance)
 }

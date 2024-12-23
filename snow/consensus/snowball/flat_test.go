@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package snowball
@@ -18,10 +18,9 @@ func TestFlat(t *testing.T) {
 		K:               3,
 		AlphaPreference: 2,
 		AlphaConfidence: 3,
-		BetaVirtuous:    1,
-		BetaRogue:       2,
+		Beta:            2,
 	}
-	f := NewFlat(params, Red)
+	f := NewFlat(SnowballFactory, params, Red)
 	f.Add(Green)
 	f.Add(Blue)
 
@@ -51,12 +50,12 @@ func TestFlat(t *testing.T) {
 
 	require.True(f.RecordPoll(threeGreen))
 	require.Equal(Green, f.Preference())
-	require.False(f.Finalized()) // Not finalized before BetaRogue rounds
+	require.False(f.Finalized()) // Not finalized before Beta rounds
 
 	require.True(f.RecordPoll(threeGreen))
 	require.Equal(Green, f.Preference())
 	require.True(f.Finalized())
 
-	expected := "SB(Preference = 2mcwQKiD8VEspmMJpL1dc7okQQ5dDVAWeCBZ7FWBFAbxpv3t7w, PreferenceStrength = 4, SF(Confidence = 2, Finalized = true, SL(Preference = 2mcwQKiD8VEspmMJpL1dc7okQQ5dDVAWeCBZ7FWBFAbxpv3t7w)))"
+	expected := "SB(Preference = 2mcwQKiD8VEspmMJpL1dc7okQQ5dDVAWeCBZ7FWBFAbxpv3t7w, PreferenceStrength = 4, SF(Confidence = [2], Finalized = true, SL(Preference = 2mcwQKiD8VEspmMJpL1dc7okQQ5dDVAWeCBZ7FWBFAbxpv3t7w)))"
 	require.Equal(expected, f.String())
 }

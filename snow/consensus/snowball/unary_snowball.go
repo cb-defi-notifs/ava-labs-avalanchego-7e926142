@@ -1,15 +1,18 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package snowball
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
-var _ UnarySnowball = (*unarySnowball)(nil)
+var _ Unary = (*unarySnowball)(nil)
 
-func newUnarySnowball(beta int) unarySnowball {
+func newUnarySnowball(alphaPreference int, terminationConditions []terminationCondition) unarySnowball {
 	return unarySnowball{
-		unarySnowflake: newUnarySnowflake(beta),
+		unarySnowflake: newUnarySnowflake(alphaPreference, terminationConditions),
 	}
 }
 
@@ -22,23 +25,21 @@ type unarySnowball struct {
 	preferenceStrength int
 }
 
-func (sb *unarySnowball) RecordSuccessfulPoll() {
-	sb.preferenceStrength++
-	sb.unarySnowflake.RecordSuccessfulPoll()
+func (sb *unarySnowball) RecordPoll(count int) {
+	if count >= sb.alphaPreference {
+		sb.preferenceStrength++
+	}
+	sb.unarySnowflake.RecordPoll(count)
 }
 
-func (sb *unarySnowball) RecordPollPreference() {
-	sb.preferenceStrength++
-	sb.unarySnowflake.RecordUnsuccessfulPoll()
-}
-
-func (sb *unarySnowball) Extend(beta int, choice int) BinarySnowball {
+func (sb *unarySnowball) Extend(choice int) Binary {
 	bs := &binarySnowball{
 		binarySnowflake: binarySnowflake{
-			binarySlush: binarySlush{preference: choice},
-			confidence:  sb.confidence,
-			beta:        beta,
-			finalized:   sb.Finalized(),
+			binarySlush:           binarySlush{preference: choice},
+			confidence:            slices.Clone(sb.confidence),
+			alphaPreference:       sb.alphaPreference,
+			terminationConditions: sb.terminationConditions,
+			finalized:             sb.Finalized(),
 		},
 		preference: choice,
 	}
@@ -46,8 +47,9 @@ func (sb *unarySnowball) Extend(beta int, choice int) BinarySnowball {
 	return bs
 }
 
-func (sb *unarySnowball) Clone() UnarySnowball {
+func (sb *unarySnowball) Clone() Unary {
 	newSnowball := *sb
+	newSnowball.confidence = slices.Clone(sb.confidence)
 	return &newSnowball
 }
 

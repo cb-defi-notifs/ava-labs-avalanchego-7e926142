@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package common
@@ -14,5 +14,7 @@ type BootstrapTracker interface {
 	// Bootstrapped marks the named chain as being bootstrapped
 	Bootstrapped(chainID ids.ID)
 
-	OnBootstrapCompleted() chan struct{}
+	// AllBootstrapped returns a channel that is closed when all chains in this
+	// subnet have been bootstrapped
+	AllBootstrapped() <-chan struct{}
 }

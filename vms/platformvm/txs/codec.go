@@ -1,22 +1,21 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package txs
 
 import (
+	"errors"
 	"math"
 
 	"github.com/ava-labs/avalanchego/codec"
 	"github.com/ava-labs/avalanchego/codec/linearcodec"
-	"github.com/ava-labs/avalanchego/utils"
 	"github.com/ava-labs/avalanchego/utils/wrappers"
 	"github.com/ava-labs/avalanchego/vms/platformvm/signer"
 	"github.com/ava-labs/avalanchego/vms/platformvm/stakeable"
 	"github.com/ava-labs/avalanchego/vms/secp256k1fx"
 )
 
-// Version is the current default codec version
-const Version = 0
+const CodecVersion = 0
 
 var (
 	Codec codec.Manager
@@ -30,9 +29,7 @@ var (
 
 func init() {
 	c := linearcodec.NewDefault()
-	Codec = codec.NewDefaultManager()
-	gc := linearcodec.NewCustomMaxLength(math.MaxInt32)
-	GenesisCodec = codec.NewManager(math.MaxInt32)
+	gc := linearcodec.NewDefault()
 
 	errs := wrappers.Errs{}
 	for _, c := range []linearcodec.Codec{c, gc} {
@@ -41,29 +38,33 @@ func init() {
 		// we skip positions for the blocks.
 		c.SkipRegistrations(5)
 
-		errs.Add(RegisterUnsignedTxsTypes(c))
+		errs.Add(
+			RegisterApricotTypes(c),
+			RegisterBanffTypes(c),
+		)
 
 		c.SkipRegistrations(4)
 
-		errs.Add(RegisterDUnsignedTxsTypes(c))
+		errs.Add(
+			RegisterDurangoTypes(c),
+			RegisterEtnaTypes(c),
+		)
 	}
+
+	Codec = codec.NewDefaultManager()
+	GenesisCodec = codec.NewManager(math.MaxInt32)
 	errs.Add(
-		Codec.RegisterCodec(Version, c),
-		GenesisCodec.RegisterCodec(Version, gc),
+		Codec.RegisterCodec(CodecVersion, c),
+		GenesisCodec.RegisterCodec(CodecVersion, gc),
 	)
 	if errs.Errored() {
 		panic(errs.Err)
 	}
 }
 
-// RegisterUnsignedTxsTypes allows registering relevant type of unsigned package
-// in the right sequence. Following repackaging of platformvm package, a few
-// subpackage-level codecs were introduced, each handling serialization of
-// specific types.
-//
-// RegisterUnsignedTxsTypes is made exportable so to guarantee that other codecs
-// are coherent with components one.
-func RegisterUnsignedTxsTypes(targetCodec linearcodec.Codec) error {
+// RegisterApricotTypes registers the type information for transactions that
+// were valid during the Apricot series of upgrades.
+func RegisterApricotTypes(targetCodec linearcodec.Codec) error {
 	errs := wrappers.Errs{}
 
 	// The secp256k1fx is registered here because this is the same place it is
@@ -90,8 +91,14 @@ func RegisterUnsignedTxsTypes(targetCodec linearcodec.Codec) error {
 
 		targetCodec.RegisterType(&stakeable.LockIn{}),
 		targetCodec.RegisterType(&stakeable.LockOut{}),
+	)
+	return errs.Err
+}
 
-		// Banff additions:
+// RegisterBanffTypes registers the type information for transactions that were
+// valid during the Banff series of upgrades.
+func RegisterBanffTypes(targetCodec linearcodec.Codec) error {
+	return errors.Join(
 		targetCodec.RegisterType(&RemoveSubnetValidatorTx{}),
 		targetCodec.RegisterType(&TransformSubnetTx{}),
 		targetCodec.RegisterType(&AddPermissionlessValidatorTx{}),
@@ -100,12 +107,25 @@ func RegisterUnsignedTxsTypes(targetCodec linearcodec.Codec) error {
 		targetCodec.RegisterType(&signer.Empty{}),
 		targetCodec.RegisterType(&signer.ProofOfPossession{}),
 	)
-	return errs.Err
 }
 
-func RegisterDUnsignedTxsTypes(targetCodec linearcodec.Codec) error {
-	return utils.Err(
+// RegisterDurangoTypes registers the type information for transactions that
+// were valid during the Durango series of upgrades.
+func RegisterDurangoTypes(targetCodec linearcodec.Codec) error {
+	return errors.Join(
 		targetCodec.RegisterType(&TransferSubnetOwnershipTx{}),
 		targetCodec.RegisterType(&BaseTx{}),
+	)
+}
+
+// RegisterEtnaTypes registers the type information for transactions that
+// were valid during the Etna series of upgrades.
+func RegisterEtnaTypes(targetCodec linearcodec.Codec) error {
+	return errors.Join(
+		targetCodec.RegisterType(&ConvertSubnetToL1Tx{}),
+		targetCodec.RegisterType(&RegisterL1ValidatorTx{}),
+		targetCodec.RegisterType(&SetL1ValidatorWeightTx{}),
+		targetCodec.RegisterType(&IncreaseL1ValidatorBalanceTx{}),
+		targetCodec.RegisterType(&DisableL1ValidatorTx{}),
 	)
 }

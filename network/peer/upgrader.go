@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package peer
@@ -69,20 +69,8 @@ func connToIDAndCert(conn *tls.Conn, invalidCerts prometheus.Counter) (ids.NodeI
 	}
 
 	tlsCert := state.PeerCertificates[0]
-	// Invariant: ParseCertificate is used rather than CertificateFromX509 to
-	// ensure that signature verification can assume the certificate was
-	// parseable according the staking package's parser.
 	peerCert, err := staking.ParseCertificate(tlsCert.Raw)
 	if err != nil {
-		invalidCerts.Inc()
-		return ids.EmptyNodeID, nil, nil, err
-	}
-
-	// We validate the certificate here to attempt to make the validity of the
-	// peer certificate as clear as possible. Specifically, a node running a
-	// prior version using an invalid certificate should not be able to report
-	// healthy.
-	if err := staking.ValidateCertificate(peerCert); err != nil {
 		invalidCerts.Inc()
 		return ids.EmptyNodeID, nil, nil, err
 	}

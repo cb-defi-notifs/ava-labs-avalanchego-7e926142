@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package validators
@@ -45,7 +45,7 @@ func (l *logger) OnValidatorAdded(
 	if l.nodeIDs.Contains(nodeID) {
 		var pkBytes []byte
 		if pk != nil {
-			pkBytes = bls.PublicKeyToBytes(pk)
+			pkBytes = bls.PublicKeyToCompressedBytes(pk)
 		}
 		l.log.Info("node added to validator set",
 			zap.Stringer("subnetID", l.subnetID),

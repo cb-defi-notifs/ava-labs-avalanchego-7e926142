@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2023, Ava Labs, Inc. All rights reserved.
+// Copyright (C) 2019-2024, Ava Labs, Inc. All rights reserved.
 // See the file LICENSE for licensing terms.
 
 package gsharedmemory
@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ava-labs/avalanchego/chains/atomic"
+	"github.com/ava-labs/avalanchego/chains/atomic/atomictest"
 	"github.com/ava-labs/avalanchego/database"
 	"github.com/ava-labs/avalanchego/database/memdb"
 	"github.com/ava-labs/avalanchego/database/prefixdb"
@@ -25,7 +26,7 @@ func TestInterface(t *testing.T) {
 	chainID0 := ids.GenerateTestID()
 	chainID1 := ids.GenerateTestID()
 
-	for _, test := range atomic.SharedMemoryTests {
+	for _, test := range atomictest.SharedMemoryTests {
 		baseDB := memdb.New()
 		memoryDB := prefixdb.New([]byte{0}, baseDB)
 		testDB := prefixdb.New([]byte{1}, baseDB)

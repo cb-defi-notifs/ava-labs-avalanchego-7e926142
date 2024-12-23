@@ -24,7 +24,6 @@ const (
 	VM_SetState_FullMethodName                   = "/vm.VM/SetState"
 	VM_Shutdown_FullMethodName                   = "/vm.VM/Shutdown"
 	VM_CreateHandlers_FullMethodName             = "/vm.VM/CreateHandlers"
-	VM_CreateStaticHandlers_FullMethodName       = "/vm.VM/CreateStaticHandlers"
 	VM_Connected_FullMethodName                  = "/vm.VM/Connected"
 	VM_Disconnected_FullMethodName               = "/vm.VM/Disconnected"
 	VM_BuildBlock_FullMethodName                 = "/vm.VM/BuildBlock"
@@ -38,12 +37,8 @@ const (
 	VM_AppResponse_FullMethodName                = "/vm.VM/AppResponse"
 	VM_AppGossip_FullMethodName                  = "/vm.VM/AppGossip"
 	VM_Gather_FullMethodName                     = "/vm.VM/Gather"
-	VM_CrossChainAppRequest_FullMethodName       = "/vm.VM/CrossChainAppRequest"
-	VM_CrossChainAppRequestFailed_FullMethodName = "/vm.VM/CrossChainAppRequestFailed"
-	VM_CrossChainAppResponse_FullMethodName      = "/vm.VM/CrossChainAppResponse"
 	VM_GetAncestors_FullMethodName               = "/vm.VM/GetAncestors"
 	VM_BatchedParseBlock_FullMethodName          = "/vm.VM/BatchedParseBlock"
-	VM_VerifyHeightIndex_FullMethodName          = "/vm.VM/VerifyHeightIndex"
 	VM_GetBlockIDAtHeight_FullMethodName         = "/vm.VM/GetBlockIDAtHeight"
 	VM_StateSyncEnabled_FullMethodName           = "/vm.VM/StateSyncEnabled"
 	VM_GetOngoingSyncStateSummary_FullMethodName = "/vm.VM/GetOngoingSyncStateSummary"
@@ -70,13 +65,6 @@ type VMClient interface {
 	Shutdown(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Creates the HTTP handlers for custom chain network calls.
 	CreateHandlers(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*CreateHandlersResponse, error)
-	// Creates the HTTP handlers for custom VM network calls.
-	//
-	// Note: RPC Chain VM Factory will start a new instance of the VM in a
-	// seperate process which will populate the static handlers. After this
-	// process is created other processes will be created to populate blockchains,
-	// but they will not have the static handlers be called again.
-	CreateStaticHandlers(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*CreateStaticHandlersResponse, error)
 	Connected(ctx context.Context, in *ConnectedRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Disconnected(ctx context.Context, in *DisconnectedRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Attempt to create a new block from data contained in the VM.
@@ -103,14 +91,10 @@ type VMClient interface {
 	AppGossip(ctx context.Context, in *AppGossipMsg, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// Attempts to gather metrics from a VM.
 	Gather(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*GatherResponse, error)
-	CrossChainAppRequest(ctx context.Context, in *CrossChainAppRequestMsg, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	CrossChainAppRequestFailed(ctx context.Context, in *CrossChainAppRequestFailedMsg, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	CrossChainAppResponse(ctx context.Context, in *CrossChainAppResponseMsg, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// BatchedChainVM
 	GetAncestors(ctx context.Context, in *GetAncestorsRequest, opts ...grpc.CallOption) (*GetAncestorsResponse, error)
 	BatchedParseBlock(ctx context.Context, in *BatchedParseBlockRequest, opts ...grpc.CallOption) (*BatchedParseBlockResponse, error)
 	// HeightIndexedChainVM
-	VerifyHeightIndex(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*VerifyHeightIndexResponse, error)
 	GetBlockIDAtHeight(ctx context.Context, in *GetBlockIDAtHeightRequest, opts ...grpc.CallOption) (*GetBlockIDAtHeightResponse, error)
 	// StateSyncableVM
 	//
@@ -171,15 +155,6 @@ func (c *vMClient) Shutdown(ctx context.Context, in *emptypb.Empty, opts ...grpc
 func (c *vMClient) CreateHandlers(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*CreateHandlersResponse, error) {
 	out := new(CreateHandlersResponse)
 	err := c.cc.Invoke(ctx, VM_CreateHandlers_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *vMClient) CreateStaticHandlers(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*CreateStaticHandlersResponse, error) {
-	out := new(CreateStaticHandlersResponse)
-	err := c.cc.Invoke(ctx, VM_CreateStaticHandlers_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -303,33 +278,6 @@ func (c *vMClient) Gather(ctx context.Context, in *emptypb.Empty, opts ...grpc.C
 	return out, nil
 }
 
-func (c *vMClient) CrossChainAppRequest(ctx context.Context, in *CrossChainAppRequestMsg, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, VM_CrossChainAppRequest_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *vMClient) CrossChainAppRequestFailed(ctx context.Context, in *CrossChainAppRequestFailedMsg, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, VM_CrossChainAppRequestFailed_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *vMClient) CrossChainAppResponse(ctx context.Context, in *CrossChainAppResponseMsg, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, VM_CrossChainAppResponse_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *vMClient) GetAncestors(ctx context.Context, in *GetAncestorsRequest, opts ...grpc.CallOption) (*GetAncestorsResponse, error) {
 	out := new(GetAncestorsResponse)
 	err := c.cc.Invoke(ctx, VM_GetAncestors_FullMethodName, in, out, opts...)
@@ -342,15 +290,6 @@ func (c *vMClient) GetAncestors(ctx context.Context, in *GetAncestorsRequest, op
 func (c *vMClient) BatchedParseBlock(ctx context.Context, in *BatchedParseBlockRequest, opts ...grpc.CallOption) (*BatchedParseBlockResponse, error) {
 	out := new(BatchedParseBlockResponse)
 	err := c.cc.Invoke(ctx, VM_BatchedParseBlock_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *vMClient) VerifyHeightIndex(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*VerifyHeightIndexResponse, error) {
-	out := new(VerifyHeightIndexResponse)
-	err := c.cc.Invoke(ctx, VM_VerifyHeightIndex_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -461,13 +400,6 @@ type VMServer interface {
 	Shutdown(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
 	// Creates the HTTP handlers for custom chain network calls.
 	CreateHandlers(context.Context, *emptypb.Empty) (*CreateHandlersResponse, error)
-	// Creates the HTTP handlers for custom VM network calls.
-	//
-	// Note: RPC Chain VM Factory will start a new instance of the VM in a
-	// seperate process which will populate the static handlers. After this
-	// process is created other processes will be created to populate blockchains,
-	// but they will not have the static handlers be called again.
-	CreateStaticHandlers(context.Context, *emptypb.Empty) (*CreateStaticHandlersResponse, error)
 	Connected(context.Context, *ConnectedRequest) (*emptypb.Empty, error)
 	Disconnected(context.Context, *DisconnectedRequest) (*emptypb.Empty, error)
 	// Attempt to create a new block from data contained in the VM.
@@ -494,14 +426,10 @@ type VMServer interface {
 	AppGossip(context.Context, *AppGossipMsg) (*emptypb.Empty, error)
 	// Attempts to gather metrics from a VM.
 	Gather(context.Context, *emptypb.Empty) (*GatherResponse, error)
-	CrossChainAppRequest(context.Context, *CrossChainAppRequestMsg) (*emptypb.Empty, error)
-	CrossChainAppRequestFailed(context.Context, *CrossChainAppRequestFailedMsg) (*emptypb.Empty, error)
-	CrossChainAppResponse(context.Context, *CrossChainAppResponseMsg) (*emptypb.Empty, error)
 	// BatchedChainVM
 	GetAncestors(context.Context, *GetAncestorsRequest) (*GetAncestorsResponse, error)
 	BatchedParseBlock(context.Context, *BatchedParseBlockRequest) (*BatchedParseBlockResponse, error)
 	// HeightIndexedChainVM
-	VerifyHeightIndex(context.Context, *emptypb.Empty) (*VerifyHeightIndexResponse, error)
 	GetBlockIDAtHeight(context.Context, *GetBlockIDAtHeightRequest) (*GetBlockIDAtHeightResponse, error)
 	// StateSyncableVM
 	//
@@ -540,9 +468,6 @@ func (UnimplementedVMServer) Shutdown(context.Context, *emptypb.Empty) (*emptypb
 }
 func (UnimplementedVMServer) CreateHandlers(context.Context, *emptypb.Empty) (*CreateHandlersResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateHandlers not implemented")
-}
-func (UnimplementedVMServer) CreateStaticHandlers(context.Context, *emptypb.Empty) (*CreateStaticHandlersResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CreateStaticHandlers not implemented")
 }
 func (UnimplementedVMServer) Connected(context.Context, *ConnectedRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Connected not implemented")
@@ -583,23 +508,11 @@ func (UnimplementedVMServer) AppGossip(context.Context, *AppGossipMsg) (*emptypb
 func (UnimplementedVMServer) Gather(context.Context, *emptypb.Empty) (*GatherResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Gather not implemented")
 }
-func (UnimplementedVMServer) CrossChainAppRequest(context.Context, *CrossChainAppRequestMsg) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CrossChainAppRequest not implemented")
-}
-func (UnimplementedVMServer) CrossChainAppRequestFailed(context.Context, *CrossChainAppRequestFailedMsg) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CrossChainAppRequestFailed not implemented")
-}
-func (UnimplementedVMServer) CrossChainAppResponse(context.Context, *CrossChainAppResponseMsg) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CrossChainAppResponse not implemented")
-}
 func (UnimplementedVMServer) GetAncestors(context.Context, *GetAncestorsRequest) (*GetAncestorsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetAncestors not implemented")
 }
 func (UnimplementedVMServer) BatchedParseBlock(context.Context, *BatchedParseBlockRequest) (*BatchedParseBlockResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method BatchedParseBlock not implemented")
-}
-func (UnimplementedVMServer) VerifyHeightIndex(context.Context, *emptypb.Empty) (*VerifyHeightIndexResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method VerifyHeightIndex not implemented")
 }
 func (UnimplementedVMServer) GetBlockIDAtHeight(context.Context, *GetBlockIDAtHeightRequest) (*GetBlockIDAtHeightResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetBlockIDAtHeight not implemented")
@@ -712,24 +625,6 @@ func _VM_CreateHandlers_Handler(srv interface{}, ctx context.Context, dec func(i
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(VMServer).CreateHandlers(ctx, req.(*emptypb.Empty))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _VM_CreateStaticHandlers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(VMServer).CreateStaticHandlers(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: VM_CreateStaticHandlers_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(VMServer).CreateStaticHandlers(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -968,60 +863,6 @@ func _VM_Gather_Handler(srv interface{}, ctx context.Context, dec func(interface
 	return interceptor(ctx, in, info, handler)
 }
 
-func _VM_CrossChainAppRequest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CrossChainAppRequestMsg)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(VMServer).CrossChainAppRequest(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: VM_CrossChainAppRequest_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(VMServer).CrossChainAppRequest(ctx, req.(*CrossChainAppRequestMsg))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _VM_CrossChainAppRequestFailed_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CrossChainAppRequestFailedMsg)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(VMServer).CrossChainAppRequestFailed(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: VM_CrossChainAppRequestFailed_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(VMServer).CrossChainAppRequestFailed(ctx, req.(*CrossChainAppRequestFailedMsg))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _VM_CrossChainAppResponse_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CrossChainAppResponseMsg)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(VMServer).CrossChainAppResponse(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: VM_CrossChainAppResponse_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(VMServer).CrossChainAppResponse(ctx, req.(*CrossChainAppResponseMsg))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _VM_GetAncestors_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetAncestorsRequest)
 	if err := dec(in); err != nil {
@@ -1054,24 +895,6 @@ func _VM_BatchedParseBlock_Handler(srv interface{}, ctx context.Context, dec fun
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(VMServer).BatchedParseBlock(ctx, req.(*BatchedParseBlockRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _VM_VerifyHeightIndex_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(VMServer).VerifyHeightIndex(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: VM_VerifyHeightIndex_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(VMServer).VerifyHeightIndex(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1280,10 +1103,6 @@ var VM_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _VM_CreateHandlers_Handler,
 		},
 		{
-			MethodName: "CreateStaticHandlers",
-			Handler:    _VM_CreateStaticHandlers_Handler,
-		},
-		{
 			MethodName: "Connected",
 			Handler:    _VM_Connected_Handler,
 		},
@@ -1336,28 +1155,12 @@ var VM_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _VM_Gather_Handler,
 		},
 		{
-			MethodName: "CrossChainAppRequest",
-			Handler:    _VM_CrossChainAppRequest_Handler,
-		},
-		{
-			MethodName: "CrossChainAppRequestFailed",
-			Handler:    _VM_CrossChainAppRequestFailed_Handler,
-		},
-		{
-			MethodName: "CrossChainAppResponse",
-			Handler:    _VM_CrossChainAppResponse_Handler,
-		},
-		{
 			MethodName: "GetAncestors",
 			Handler:    _VM_GetAncestors_Handler,
 		},
 		{
 			MethodName: "BatchedParseBlock",
 			Handler:    _VM_BatchedParseBlock_Handler,
-		},
-		{
-			MethodName: "VerifyHeightIndex",
-			Handler:    _VM_VerifyHeightIndex_Handler,
 		},
 		{
 			MethodName: "GetBlockIDAtHeight",
